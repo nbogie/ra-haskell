@@ -1,9 +1,9 @@
 module Main where
 import Shuffle
-import Data.List (nub, sort, group)
+import Data.List (nub, sort, group, (\\))
 import Control.Arrow ((&&&))
 import Control.Monad (forM)
-import Data.Either (lefts, rights)
+import qualified Data.Map as M
 class ToChar a where
   toChar :: a -> Char
 
@@ -17,6 +17,19 @@ data Tile = Ra
           | Civilization CivilizationType
           | Disaster DisasterType 
           deriving (Eq, Show, Ord)
+
+isTempTile :: Tile -> Bool
+isTempTile t = case t of
+  Ra             -> True -- TODO: this question should never be asked
+  Pharaoh        -> False
+  God            -> True
+  Gold           -> True
+  Nile           -> False
+  Flood          -> True
+  Monument _     -> False
+  Civilization _ -> True
+  Disaster _     -> True --TODO: this question should never be asked
+
 
 instance ToChar Tile where
    toChar t = case t of
@@ -153,10 +166,10 @@ boardToString b = unlines [
                           ]
 data Board = Board { raCount :: Int
                    , block :: Block
-                   , sun :: Sun
+                   , boardSun :: Sun
                    , epoch :: Epoch
                    , deck :: Deck
-                   , hands :: [Hand]
+                   , hands :: M.Map PlayerNum Hand
                    , currentPlayer :: Int
                    } deriving (Show, Eq)
 
@@ -165,37 +178,34 @@ instance Show Epoch where
   show (Epoch i) = "Epoch " ++ show i
 
 numPlayers :: Board -> Int
-numPlayers = length . hands
+numPlayers = length . M.keys . hands
 
 startingSuns = fmap (fmap (fmap Sun)) [ [[9,6,5,2], [8,7,4,3]]
                , [[13,8,5,2], [12, 9, 6, 3], [11, 10, 7, 4]]]
 initHands :: Int -> [Hand]
-initHands n = map (\suns -> Hand [] $ map Right suns) sunSets
+initHands n = map (\suns -> Hand [] (suns, [])) sunSets
   where sunSets = head $ filter ((==n) . length) startingSuns 
+
 initBoard :: [Tile] -> Board
 initBoard ts = Board 
              { raCount = 0
              , block = []
-             , sun = Sun 1
+             , boardSun = Sun 1
              , epoch = Epoch 1
              , deck = ts
-             , hands = initHands 3
+             , hands = M.fromList $ zip (playerCycleFromTo 0 3) (initHands 3) 
              , currentPlayer = 0
              } 
 
-data Hand = Hand [Tile] [Either Sun Sun] deriving (Show, Eq)
+data Hand = Hand [Tile] ([Sun], [Sun]) deriving (Show, Eq, Ord)
 
 currentHand ::  Board -> Hand
-currentHand board = hands board !! currentPlayer board
+currentHand board = hands board M.! currentPlayer board
 tilesInCurrentHand ::  Board -> [Tile]
 tilesInCurrentHand = tilesInHand . currentHand
-sunsInCurrentHand ::  Board -> [Either Sun Sun]
-sunsInCurrentHand = sunsInHand . currentHand
-faceUpSunsInCurrentHand ::  Board -> [Sun]
-faceUpSunsInCurrentHand = faceUpSuns . currentHand
 faceUpSuns :: Hand -> [Sun]
-faceUpSuns = rights . sunsInHand
-sunsInHand :: Hand -> [Either Sun Sun]
+faceUpSuns = fst . sunsInHand
+sunsInHand :: Hand -> ([Sun], [Sun])
 sunsInHand (Hand ts ss) = ss
 
 advancePlayer :: Board -> Board
@@ -206,10 +216,16 @@ advanceEpoch b = b { epoch = adv (epoch b) }
    adv (Epoch 1) = Epoch 2
    adv (Epoch 2) = Epoch 3
 
+removeTempTiles :: Hand -> Hand
+removeTempTiles (Hand ts ss) = Hand (filter isTempTile ts) ss
 endEpoch :: Board -> (Bool, Board)
 endEpoch b = case epoch b of
   Epoch 3 -> (True, b { block = [] })
-  other   -> (False, advanceEpoch $ b { block = [], raCount = 0 })
+  other   -> (False, advanceEpoch $ forAllHands removeTempTiles $ forAllHands faceSunsUp $ b { block = [], raCount = 0 })
+    where faceSunsUp (Hand ts ss) = Hand ts (turnSunsFaceUp ss)
+
+forAllHands :: (Hand -> Hand) -> Board -> Board
+forAllHands f b = b{ hands = M.map f (hands b) } 
 
 initDeck ::  IO [Tile]
 initDeck = shuffle allTiles
@@ -277,9 +293,10 @@ type PlayerNum = Int
 isStillInPlay :: PlayerNum -> Board -> Bool
 isStillInPlay pi b = not $ null $ faceUpSuns $ handOf pi b
 handOf :: PlayerNum -> Board -> Hand
-handOf pi b = hands b !! pi
+handOf pi b = hands b M.! pi
 
-playerCycle b = map (\i -> i `mod` numPlayers b) [currentPlayer b ..]
+playerCycleFromTo pi mx = map (\i -> i `mod` mx) [pi ..]
+playerCycle b = playerCycleFromTo  (currentPlayer b) (numPlayers b)
 
 
 data BidChoice = Pass | Bid Sun deriving (Show, Eq, Ord)
@@ -320,7 +337,32 @@ findBestBid b (pi:pis) topBid =
        putStrLn "You cannot bit (better than x)"
        findBestBid b pis topBid
 
-addToHandOf = undefined
+modTilesInHand :: ([Tile] -> [Tile]) -> Hand -> Hand
+modTilesInHand f (Hand ts suns) = Hand (f ts) suns
+addToHandOf :: PlayerNum -> [Tile] -> Board -> Board
+addToHandOf pi ts b = b { hands = M.adjust (modTilesInHand (++ ts)) pi (hands b) }
+
+winAuction ::  PlayerNum -> [Tile] -> Board -> Sun -> Board
+winAuction pi ts b lostSun = 
+  exchangeSun pi lostSun $ wipeBlock $ addToHandOf pi ts b
+    where  wipeBlock b = b { block = []} 
+
+type SunsUpDown = ([Sun], [Sun])
+modSunsInHand :: (SunsUpDown -> SunsUpDown) -> Hand -> Hand
+modSunsInHand f (Hand ts suns) = Hand ts (f suns)
+
+turnSunsFaceUpFor :: PlayerNum -> Sun -> Board -> Board
+turnSunsFaceUpFor pi s b = b { hands = M.adjust (modSunsInHand turnSunsFaceUp) pi (hands b) }
+
+turnSunsFaceUp :: SunsUpDown -> SunsUpDown
+turnSunsFaceUp (ups, downs) = (ups ++ downs, [])
+
+exchangeSun:: PlayerNum -> Sun -> Board -> Board
+exchangeSun pi toBoard b = 
+  b { boardSun = toBoard
+    , hands = M.adjust (modSunsInHand f) pi (hands b) 
+    }
+  where f (ups, downs) = (ups \\ [toBoard], (boardSun b):downs)
 
 af :: AuctionReason -> Board -> IO Board
 af reason b = do
@@ -328,7 +370,8 @@ af reason b = do
   putStrLn $ boardToString b
   bestBid <- findBestBid b (playersForAuction b) Nothing
   case bestBid of
-    Just (sun, winner) -> addToHandOf winner (block b) b
+    Just (sun, winner) -> return $ winAuction winner (block b) b sun
+    Nothing            -> return b 
   let isTaken = False
   let nextBlock = case (reason, isTaken) of
                    (_, True)      -> [] 
@@ -339,8 +382,6 @@ af reason b = do
 useGodOrCancel :: Board -> IO Board
 useGodOrCancel b = putStrLn "Pick a tile from block to take with your god" >> return (advancePlayer b)
 currentPlayerCanUseGod board = blockIsNotEmpty board && God `elem` tilesInCurrentHand board
-
-
 
 blockIsEmpty :: Board -> Bool
 blockIsEmpty = null . block
