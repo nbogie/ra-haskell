@@ -314,7 +314,7 @@ handOf pi b = players b M.! pi
 
 af :: AuctionReason -> Board -> IO Board
 af reason b = do
-  putStrLn $ "An auction!  Reason: " ++ (show reason)
+  putStrLn $ "An auction!  Reason: " ++ show reason
   putStrLn $ boardToString b
   bestBid <- findBestBid (reason == RaCalled) b (playersForAuction b) Nothing
   let (newBoard, winr) = case bestBid of
@@ -326,7 +326,7 @@ af reason b = do
 
 getBidChoice :: Bool -> Board -> PlayerNum -> Maybe (Sun, PlayerNum) -> IO (Maybe (Sun, PlayerNum))
 getBidChoice isMandatory b pi currBid = do
-     let possibleBids = map sunValue $ filter ( > (maybe (Sun 0) fst currBid)) $ faceUpSuns $ handOf pi b
+     let possibleBids = map sunValue $ filter ( > maybe (Sun 0) fst currBid) $ faceUpSuns $ handOf pi b
      let passStr = if isMandatory then ".  You must bid as you called Ra: " else " or hit return to pass: "
      putStrLn $ show pi ++ ": Enter bid: " ++ show possibleBids ++ passStr
      l <- getLine
@@ -400,7 +400,7 @@ exchangeSun pi toBoard b =
   b { boardSun = toBoard
     , players = M.adjust (modSuns f) pi (players b) 
     }
-  where f (ups, downs) = (ups \\ [toBoard], (boardSun b):downs)
+  where f (ups, downs) = (ups \\ [toBoard], boardSun b:downs)
 
 -- todo: resolve disasters if picked
 exchangeGod :: PlayerNum -> Tile -> Board -> Board
@@ -423,7 +423,7 @@ useGodOrCancel pi b = do
   else
      case readInt l >>= validOnBlock of
        -- TODO: allow multiple useGodOrCancels, if player has multiple gods
-       Just i -> putStrLn ("You chose "++show i) >> (return (advancePlayer (exchangeGod pi Ra b)))
+       Just i -> putStrLn ("You chose "++show i) >> return (advancePlayer (exchangeGod pi Ra b))
        Nothing -> useGodOrCancel pi b 
        where validOnBlock :: Int -> Maybe Tile
              validOnBlock n =  fmap snd $ find ((==n) . fst) mapping
@@ -438,7 +438,7 @@ loop board = do
   let pi = currentPlayerId board
   let mayDraw = blockFull board
   if isStillInPlay pi board then do
-     putStrLn $ (show pi) ++ ": " ++ keyPrompt
+     putStrLn $ show pi ++ ": " ++ keyPrompt
      putStrLn $ boardToString board
      l <- getLine
      case l of
@@ -452,12 +452,12 @@ loop board = do
          putStrLn "g - god"
          if currentPlayerCanUseGod board
          then useGodOrCancel pi board >>= loop
-         else (putStrLn "You have no God tiles to use or there are no tiles to take!  Choose again." >> loop board)
+         else putStrLn "You have no God tiles to use or there are no tiles to take!  Choose again." >> loop board
        "r"   -> do
          putStrLn "r - calling Ra"
          let reason = if blockFull board then BlockFull else RaCalled
          fmap advancePlayer (af reason board) >>= loop
-       other -> (putStrLn $ "You entered nonsense: " ++ show other) >> loop board
+       other -> putStrLn ("You entered nonsense: " ++ show other) >> loop board
      else do
        putStrLn "Skipping player - no suns left"
        loop (advancePlayer board)
