@@ -24,7 +24,8 @@ data Tile = Ra
   However, Disaster tiles may be taken using a god, that is not storeability but takeability.
   We want to be able to store a mix of such tiles in the deck, such that a Ra and a God and a Flood could all be in the same list of tiles - does this preclude type classes?
 --}
-
+isPermanentTile ::  Tile -> Bool
+isPermanentTile = not . isTempTile
 isTempTile :: Tile -> Bool
 isTempTile t = case t of
   Ra             -> True -- TODO: this question should never be asked
@@ -151,7 +152,7 @@ blockToSummaryString  = unlines . map show . sort . map (head &&& length) . grou
 blockToString :: Block -> String
 blockToString = padWith '.' 8 . map toChar
 playerToString ::(PlayerNum, Player) -> String
-playerToString (i, p) = "Player: " ++ show i ++ ": " ++ show (suns p) ++ ", " ++ ts
+playerToString (i, p) = "Player: " ++ show i ++ ": (" ++ show (score p) ++ "): " ++ show (suns p) ++ ", " ++ ts
   where ts            = tilesToString . tiles $ p
         tilesToString = map toChar . concat . group . sort 
 
@@ -187,6 +188,7 @@ playersFromCurrent b = map (\i -> (i, players b M.! i)) (take lim $ playerCycle 
   where lim = numPlayers b
 data Player = Player { suns :: ([Sun], [Sun])
                      , tiles :: [Tile]
+                     , score :: Int
                      } deriving (Show, Eq)
 
 data Board = Board { raCount :: Int
@@ -208,7 +210,7 @@ numPlayers = length . M.keys . players
 startingSuns = fmap (fmap (fmap Sun)) [ [[9,6,5,2], [8,7,4,3]]
                , [[13,8,5,2], [12, 9, 6, 3], [11, 10, 7, 4]]]
 initPlayers :: Int -> [Player]
-initPlayers n = map (\ss -> Player (ss, []) []) sunSets
+initPlayers n = map (\ss -> Player (ss, []) [] 10) sunSets
   where sunSets = head $ filter ((==n) . length) startingSuns 
 
 initBoard :: [Tile] -> Board
@@ -237,13 +239,55 @@ advanceEpoch b = b { epoch = adv (epoch b) }
    adv (Epoch 2) = Epoch 3
 
 removeTempTiles :: Player -> Player
-removeTempTiles (Player ss ts) = Player ss (filter isTempTile ts)
+removeTempTiles p = p { tiles = filter isPermanentTile $ tiles p }
 
+scoreEpoch :: Board -> Board
+scoreEpoch b = forAllPlayers (scoreEpochForPlayer isFinal pharCounts sunTotals) b
+  where 
+    pharCounts = map (length . filter (==Pharaoh) . tiles) $ M.elems $ players b
+    sunTotals  = map (totalSunCount . suns) $ M.elems $ players b
+    isFinal = epoch b == Epoch 3
+
+-- Total values of all your suns, regardless of facing
+-- Used in final scoring, and perhaps by AI.  
+-- Keep impl out of scoring, as scoring doesn't want to know about the structure of the sun storeage
+totalSunCount :: SunsUpDown -> Int
+totalSunCount = sum . map sunValue . fst . turnSunsFaceUp
+
+scoreEpochForPlayer :: Bool -> [Int] -> [Int] -> Player -> Player
+scoreEpochForPlayer isFinal pharCounts sunTotals p = p { score = score p + total }
+  where 
+     total :: Int
+     total = max 0 $ sum $ [2*(num God), pharaohScore, nileScore, civScore, 3*(num Gold)] ++ (if isFinal then [monumentScore, sunScore] else [])
+     pharaohScore | length (nub pharCounts) < 2       = 0 -- all have same num pharaohs
+                  | num Pharaoh == minimum pharCounts = -2
+                  | num Pharaoh == maximum pharCounts = 5
+                  | otherwise                         = 0 -- neither min nor max
+     sunScore     | length (nub sunTotals) < 2        = 0
+                  | sunTotal == minimum sunTotals     = -5
+                  | sunTotal == maximum sunTotals     = 5
+                  | otherwise                         = 0
+     sunTotal = totalSunCount (suns p)
+     nileScore = if num Flood < 1 then 0 else num Nile + num Flood
+     civScore = [-5, 0, 0, 5, 10, 15] !! (length $ nub civTypes)
+     civTypes = [t | Civilization t <- tiles p]
+     monumentScore = scoreMonuments monumentTypes
+     monumentTypes = [t | Monument t <- tiles p]
+     -- so useful!
+     num :: Tile -> Int
+     num t = length $ filter (==t) $ tiles p 
+
+scoreMonuments :: [MonumentType] -> Int
+scoreMonuments ts = sum [ [0,1,2,3,4,5,6,10,15] !! (length $ nub ts)
+                        , sum $ map scoreIdenticalGroup $ filter ( (<3) . length) $ group $ sort ts
+                        ]
+  where
+    scoreIdenticalGroup mts = [0,0,0,5,10,15] !! length mts
 endEpoch :: Board -> (Bool, Board)
 endEpoch b = case epoch b of
-  Epoch 3 -> (True, b { block = [] })
-  other   -> (False, advanceEpoch $ forAllPlayers removeTempTiles $ forAllPlayers faceSunsUp $ b { block = [], raCount = 0 })
-    where faceSunsUp (Player ss ts) = Player (turnSunsFaceUp ss) ts
+  Epoch 3 -> (True, scoreEpoch $ b { raCount = 0, block = [] })
+  other   -> (False, advanceEpoch $ forAllPlayers removeTempTiles $ scoreEpoch $ forAllPlayers faceSunsUp $ b { block = [], raCount = 0 })
+    where faceSunsUp p = modSuns turnSunsFaceUp p
 
 forAllPlayers :: (Player -> Player) -> Board -> Board
 forAllPlayers f b = b{ players = M.map f (players b) } 
@@ -373,12 +417,13 @@ faceUpSuns :: Player -> [Sun]
 faceUpSuns = fst . suns
 
 modSuns :: (SunsUpDown -> SunsUpDown) -> Player -> Player
-modSuns f (Player ss ts) = Player (f ss) ts
+modSuns f p = p { suns = f (suns p) } 
 modTiles :: ([Tile] -> [Tile]) -> Player -> Player
-modTiles f (Player ss ts) = Player ss (f ts) 
+modTiles f p = p { tiles = f (tiles p) }
 
 addToTilesOf :: PlayerNum -> [Tile] -> Board -> Board
 addToTilesOf pi ts b = b { players = M.adjust (modTiles (++ ts)) pi (players b) }
+
 removeFromTilesOf :: PlayerNum -> [Tile] -> Board -> Board
 removeFromTilesOf pi ts b = b { players = M.adjust (modTiles (\\ ts)) pi (players b) }
 
@@ -395,6 +440,7 @@ turnSunsFaceUpFor pi s b = b { players = M.adjust (modSuns turnSunsFaceUp) pi (p
 turnSunsFaceUp :: SunsUpDown -> SunsUpDown
 turnSunsFaceUp (ups, downs) = (ups ++ downs, [])
 
+
 exchangeSun:: PlayerNum -> Sun -> Board -> Board
 exchangeSun pi toBoard b = 
   b { boardSun = toBoard
@@ -404,7 +450,10 @@ exchangeSun pi toBoard b =
 
 -- todo: resolve disasters if picked
 exchangeGod :: PlayerNum -> Tile -> Board -> Board
-exchangeGod pi t b = removeFromTilesOf pi [God] $ addToTilesOf pi [t] b
+exchangeGod pi t b = removeFromBlock [t] $ removeFromTilesOf pi [God] $ addToTilesOf pi [t] b
+  where
+   removeFromBlock :: [Tile] -> Board -> Board
+   removeFromBlock ts b = b { block = block b \\ ts }
 
 
 -- todo: this should be local to useGodOrCancel
@@ -423,7 +472,7 @@ useGodOrCancel pi b = do
   else
      case readInt l >>= validOnBlock of
        -- TODO: allow multiple useGodOrCancels, if player has multiple gods
-       Just i -> putStrLn ("You chose "++show i) >> return (advancePlayer (exchangeGod pi Ra b))
+       Just tile -> putStrLn ("You chose "++show tile) >> return (advancePlayer (exchangeGod pi tile b))
        Nothing -> useGodOrCancel pi b 
        where validOnBlock :: Int -> Maybe Tile
              validOnBlock n =  fmap snd $ find ((==n) . fst) mapping
