@@ -3,6 +3,7 @@ import Shuffle
 import Data.List (nub, sort, group, (\\), find)
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import Debug.Trace (traceShow)
+import Test.HUnit
 
 import Control.Arrow ((&&&))
 import Control.Monad (forM)
@@ -260,18 +261,18 @@ data ScoreReason = ScGods Int
                  | ScNiles Int Bool
                  | ScCivs Int Int
                  | ScGolds Int
-                 | ScMonuments Int
+                 | ScMonuments Int Int
                  | ScSuns Int ComparativeScoreReason
                  deriving (Show, Eq)
 
 scoreFrom r = case r of
-  ScGods i       -> i
-  ScPharaohs i _ -> i
-  ScNiles i _    -> i
-  ScCivs i _     -> i
-  ScGolds i      -> i
-  ScMonuments i  -> i
-  ScSuns i _     -> i
+  ScGods i          -> i
+  ScPharaohs i _    -> i
+  ScNiles i _       -> i
+  ScCivs i _        -> i
+  ScGolds i         -> i
+  ScMonuments x y -> x + y
+  ScSuns i _        -> i
 
 -- did you get points because you had the most of something?  the least?  everyone had the same?
 data ComparativeScoreReason = Min | Max | AllEqual | Neutral deriving (Show, Eq)
@@ -311,11 +312,11 @@ scoreEpochForPlayer isFinal pharCounts sunTotals p = p { score = max 0 (score p 
      num t = length $ filter (==t) $ tiles p 
 
 scoreMonuments :: [MonumentType] -> ScoreReason
-scoreMonuments ts = ScMonuments $ sum [ scoreForDifferents, scoreForIdenticals ]
+scoreMonuments ts = ScMonuments scoreForDifferents scoreForIdenticals
   where
     scoreForDifferents = [0,1,2,3,4,5,6,10,15] !! length (nub ts)
-    scoreForIdenticals = sum $ map scoreIdenticalGroup $ filter ( (<3) . length) $ group $ sort ts
-    scoreIdenticalGroup mts = [0,0,0,5,10,15] !! length mts
+    scoreForIdenticals = sum $ map scoreIdenticalGroup $ filter ( (>=3) . length) $ group $ sort ts
+    scoreIdenticalGroup g = [0,0,0,5,10,15] !! length g
 endEpoch :: Board -> (Bool, Board)
 endEpoch b = case epoch b of
   Epoch 3 -> (True, scoreEpoch $ b { raCount = 0, block = [] })
@@ -332,7 +333,9 @@ raTrackFull :: Board -> Bool
 raTrackFull = (>=8) . raCount
 
 main ::  IO ()
-main = fmap initBoard initDeck >>= loop 
+main = do
+  _counts <- tests
+  fmap initBoard initDeck >>= loop 
   -- mapM_ (putStrLn . toDebugStr) $ sort $ nub allTiles
 
 incRaCount :: Board -> Board
@@ -366,6 +369,9 @@ drawTile board auctionFn normalFn =
          let newBlock = next : block board
          let newBoard = board { deck = rest, block = newBlock } 
          fmap advancePlayer $ normalFn newBoard
+
+testDataMonumentScoring ::  (Integer, [MonumentType])
+testDataMonumentScoring =  (19, replicate 4 Pyramid ++ replicate 3 Temple ++ replicate 2 Fortress ++ [Sphinx])
 
 data AuctionReason = BlockFull | RaDrawn | RaCalled deriving (Eq, Show)
 
@@ -548,3 +554,20 @@ loop board = do
      else do
        putStrLn "Skipping player - no suns left"
        loop (advancePlayer board)
+
+
+
+
+testScoreMonuments ::  Test
+testScoreMonuments = TestList 
+  [ "Score Monuments - Rules example" ~: ScMonuments 4 15 ~=? scoreMonuments (snd testDataMonumentScoring)
+  , "monuments none" ~: ScMonuments 0 0 ~=? scoreMonuments []
+  , "monuments" ~: ScMonuments 15 0 ~=? scoreMonuments [minBound .. maxBound]
+  , "monuments" ~: ScMonuments 1 0 ~=? scoreMonuments [Pyramid]
+  , "monuments" ~: ScMonuments 1 0 ~=? scoreMonuments [Pyramid, Pyramid]
+  , "monuments" ~: ScMonuments 1 5 ~=? scoreMonuments [Pyramid, Pyramid, Pyramid]
+  , "monuments" ~: ScMonuments 15 120 ~=? (scoreMonuments [mt | Monument mt <- allMonuments])
+  ]
+
+tests ::  IO Counts
+tests       = runTestTT $ TestList [ testScoreMonuments]
