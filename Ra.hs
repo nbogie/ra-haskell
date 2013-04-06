@@ -1,6 +1,8 @@
 module Main where
 import Shuffle
-import Data.List (nub, sort, group, (\\))
+import Data.List (nub, sort, group, (\\), find)
+import Data.Maybe (fromMaybe, isJust)
+
 import Control.Arrow ((&&&))
 import Control.Monad (forM)
 import qualified Data.Map as M
@@ -17,6 +19,11 @@ data Tile = Ra
           | Civilization CivilizationType
           | Disaster DisasterType 
           deriving (Eq, Show, Ord)
+{--
+  We ask isTempTile only of a Tile Storeable, and Ra and Disaster tiles are not storeable.  
+  However, Disaster tiles may be taken using a god, that is not storeability but takeability.
+  We want to be able to store a mix of such tiles in the deck, such that a Ra and a God and a Flood could all be in the same list of tiles - does this preclude type classes?
+--}
 
 isTempTile :: Tile -> Bool
 isTempTile t = case t of
@@ -30,6 +37,10 @@ isTempTile t = case t of
   Civilization _ -> True
   Disaster _     -> True --TODO: this question should never be asked
 
+isGoddable :: Tile -> Bool
+isGoddable God = False
+isGoddable Ra  = False -- TODO: this question should never be asked.  we ask isGoddable of an Tile Auctionable
+isGoddable _   = True
 
 instance ToChar Tile where
    toChar t = case t of
@@ -127,6 +138,10 @@ instance Show Sun where
 type Deck = [Tile]
 type Block = [Tile]
 
+blockIsEmpty :: Board -> Bool
+blockIsEmpty = null . block
+blockIsNotEmpty :: Board -> Bool
+blockIsNotEmpty = not . blockIsEmpty
 blockFull :: Board -> Bool
 blockFull = (>=8) . length . block
 
@@ -136,7 +151,9 @@ blockToSummaryString  = unlines . map show . sort . map (head &&& length) . grou
 blockToString :: Block -> String
 blockToString = padWith '.' 8 . map toChar
 handToString :: Hand -> String
-handToString = handTilesToString . tilesInHand
+handToString h = suns ++ ", " ++ tiles
+  where tiles = handTilesToString . tilesInHand $ h
+        suns  = show $ sunsInHand h 
 tilesInHand (Hand ts _) = ts
 handTilesToString = map toChar . concat . group . sort 
 
@@ -218,6 +235,7 @@ advanceEpoch b = b { epoch = adv (epoch b) }
 
 removeTempTiles :: Hand -> Hand
 removeTempTiles (Hand ts ss) = Hand (filter isTempTile ts) ss
+
 endEpoch :: Board -> (Bool, Board)
 endEpoch b = case epoch b of
   Epoch 3 -> (True, b { block = [] })
@@ -299,17 +317,40 @@ playerCycleFromTo pi mx = map (\i -> i `mod` mx) [pi ..]
 playerCycle b = playerCycleFromTo  (currentPlayer b) (numPlayers b)
 
 
-data BidChoice = Pass | Bid Sun deriving (Show, Eq, Ord)
-getBidChoice :: Board -> PlayerNum -> IO BidChoice
-getBidChoice b pi = do
-     let possibleBids = map (show . sunValue) $ faceUpSuns $ handOf pi b
-     putStrLn $ "Enter bid: " ++ show possibleBids ++ " or hit return to pass: "
+af :: AuctionReason -> Board -> IO Board
+af reason b = do
+  putStrLn $ "An auction!  Reason: " ++ (show reason)
+  putStrLn $ boardToString b
+  bestBid <- findBestBid b (playersForAuction b) Nothing
+  let newBoard = case bestBid of
+                   Just (sun, winner) -> winAuction winner (block b) b sun
+                   Nothing            -> b 
+  return $ newBoard { block = if reason == BlockFull then [] else (block newBoard) }
+
+getBidChoice :: Board -> PlayerNum -> Maybe (Sun, PlayerNum) -> IO (Maybe (Sun, PlayerNum))
+getBidChoice b pi currBid = do
+     let possibleBids = map sunValue $ filter ( > (maybe (Sun 0) fst currBid)) $ faceUpSuns $ handOf pi b
+     putStrLn $ show pi ++ ": Enter bid: " ++ show possibleBids ++ " or hit return to pass: "
      l <- getLine
      case l of
-       ""    -> return Pass
+       ""    -> return Nothing
        other -> case readInt l of
-         Just i -> return $ Bid $ Sun i
-         _      -> getBidChoice b pi
+         Just i -> if i `elem` possibleBids
+                     then return $ Just (Sun i, pi)
+                     else putStrLn "You don't have that sun!" >> getBidChoice b pi currBid
+         _      -> putStrLn "What?" >> getBidChoice b pi currBid
+
+findBestBid :: Board -> [PlayerNum] -> Maybe (Sun, PlayerNum)  -> IO (Maybe (Sun, PlayerNum))
+findBestBid b [] topBid = return topBid
+findBestBid b (pi:pis) topBid = 
+     if isStillInPlay pi b && maybe True (((pi,b) `canBidHigherThan`) . fst) topBid
+     then do
+       bc <- getBidChoice b pi topBid
+       let newBid = if isJust bc then bc else topBid
+       findBestBid b pis newBid
+     else do 
+       putStrLn $ "You cannot bid (better than " ++ show topBid ++ ")"
+       findBestBid b pis topBid
 
 canBidHigherThan :: (PlayerNum, Board) -> Sun -> Bool
 canBidHigherThan (pi, board) bid = 
@@ -324,23 +365,13 @@ canBidHigherThan (pi, board) bid =
 
 playersForAuction :: Board -> [PlayerNum]
 playersForAuction b = take (numPlayers b) $ drop 1 $ playerCycle b
-findBestBid :: Board -> [PlayerNum] -> Maybe (Sun, PlayerNum)  -> IO (Maybe (Sun, PlayerNum))
-findBestBid b [] topBid = return topBid
-findBestBid b (pi:pis) topBid = 
-     if isStillInPlay pi b && maybe True (((pi,b) `canBidHigherThan`) . fst) topBid
-     then do
-       bc <- getBidChoice b pi
-       case bc of
-         Bid sv -> findBestBid b pis (Just (sv, pi))
-         Pass   -> findBestBid b pis topBid
-     else do 
-       putStrLn "You cannot bit (better than x)"
-       findBestBid b pis topBid
 
 modTilesInHand :: ([Tile] -> [Tile]) -> Hand -> Hand
 modTilesInHand f (Hand ts suns) = Hand (f ts) suns
 addToHandOf :: PlayerNum -> [Tile] -> Board -> Board
 addToHandOf pi ts b = b { hands = M.adjust (modTilesInHand (++ ts)) pi (hands b) }
+removeFromHandOf :: PlayerNum -> [Tile] -> Board -> Board
+removeFromHandOf pi ts b = b { hands = M.adjust (modTilesInHand (\\ ts)) pi (hands b) }
 
 winAuction ::  PlayerNum -> [Tile] -> Board -> Sun -> Board
 winAuction pi ts b lostSun = 
@@ -364,44 +395,59 @@ exchangeSun pi toBoard b =
     }
   where f (ups, downs) = (ups \\ [toBoard], (boardSun b):downs)
 
-af :: AuctionReason -> Board -> IO Board
-af reason b = do
-  putStrLn $ "An auction!  Reason: " ++ (show reason)
-  putStrLn $ boardToString b
-  bestBid <- findBestBid b (playersForAuction b) Nothing
-  case bestBid of
-    Just (sun, winner) -> return $ winAuction winner (block b) b sun
-    Nothing            -> return b 
-  let isTaken = False
-  let nextBlock = case (reason, isTaken) of
-                   (_, True)      -> [] 
-                   (BlockFull, _) -> [] 
-                   _ -> block b
-  return $ b { block = nextBlock }
+-- todo: resolve disasters if picked
+exchangeGod :: PlayerNum -> Tile -> Board -> Board
+exchangeGod pi t b = removeFromHandOf pi [God] $ addToHandOf pi [t] b
 
-useGodOrCancel :: Board -> IO Board
-useGodOrCancel b = putStrLn "Pick a tile from block to take with your god" >> return (advancePlayer b)
+
+-- todo: this should be local to useGodOrCancel
+tilesOnBlockMapping :: Block -> [(Int, Tile)]
+tilesOnBlockMapping bl = zip  [0..] (filter isGoddable bl)
+
+
+useGodOrCancel :: PlayerNum -> Board -> IO Board
+useGodOrCancel pi b = do
+  putStrLn "Pick a tile from block to take with your god, or c to cancel"
+  putStrLn $ "Tiles on Block: " ++ show (tilesOnBlockMapping (block b))
+  l <- getLine
+  if l == "c"  -- cancel
+  then 
+    return b
+  else
+     case readInt l >>= validOnBlock of
+       -- TODO: allow multiple useGodOrCancels, if player has multiple gods
+       Just i -> putStrLn ("You chose "++show i) >> (return (advancePlayer (exchangeGod pi Ra b)))
+       Nothing -> useGodOrCancel pi b 
+       where validOnBlock :: Int -> Maybe Tile
+             validOnBlock n =  fmap snd $ find ((==n) . fst) mapping
+             numsForBlockTiles =  map fst mapping
+             mapping = tilesOnBlockMapping $ block b
+
 currentPlayerCanUseGod board = blockIsNotEmpty board && God `elem` tilesInCurrentHand board
 
-blockIsEmpty :: Board -> Bool
-blockIsEmpty = null . block
-blockIsNotEmpty :: Board -> Bool
-blockIsNotEmpty = not . blockIsEmpty
 loop ::  Board -> IO ()
 loop board = do
   let keyPrompt = "Enter return (draw tile), g(use god), r(call Ra), or q(quit)."
-  putStrLn keyPrompt
-  l <- getLine
-  case l of
-    ""  -> putStrLn "return - Drawing a tile" >> drawTile board af nf >>= loop
-    "g" -> do
-      putStrLn "g - god"
-      if currentPlayerCanUseGod board
-      then useGodOrCancel board >>= loop
-      else (putStrLn "You have no God tiles to use or there are no tiles to take!  Choose again." >> loop board)
-    "r" -> putStrLn "r - calling Ra"
-    "q" -> do
-      putStrLn "q - quitting"
-    other -> do 
-      putStrLn $ "You entered nonsense: " ++ show other
-      loop board
+  let pi = currentPlayer board
+  if isStillInPlay pi board then do
+     putStrLn $ (show pi) ++ ": " ++ keyPrompt
+     putStrLn $ boardToString board
+     l <- getLine
+     case l of
+       ""  -> putStrLn "return - Drawing a tile" >> drawTile board af nf >>= loop
+       "g" -> do
+         putStrLn "g - god"
+         if currentPlayerCanUseGod board
+         then useGodOrCancel pi board >>= loop
+         else (putStrLn "You have no God tiles to use or there are no tiles to take!  Choose again." >> loop board)
+       "r" -> do
+         putStrLn "r - calling Ra"
+         fmap advancePlayer (af RaCalled board) >>= loop
+       "q" -> do
+         putStrLn "q - quitting"
+       other -> do 
+         putStrLn $ "You entered nonsense: " ++ show other
+         loop board
+     else do
+       putStrLn "Skipping player - no suns left"
+       loop (advancePlayer board)

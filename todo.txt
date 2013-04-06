@@ -1,0 +1,3 @@
+* improve types so that certain tiles are not holdable in a hand (disasters and Ra tiles).
+* implement disaster resolution
+* multiple ui's - e.g. curses interface - will highlight game/ui boundary
