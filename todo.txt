@@ -1,7 +1,7 @@
 * improve types so that certain tiles are not holdable in a hand (disasters and Ra tiles).
 * implement disaster resolution
 * multiple ui's - e.g. curses interface - will highlight game/ui boundary
-* implement forced bidding for caller when auction has been called voluntarily and no one else has bid
 
 DONE:
 * correct the design: when the block is full, an auction isn't automatically called - player may call ra, OR use god(s) if held. Remember this invocation of ra is classed involuntary.
+* implement forced bidding for caller when auction has been called voluntarily and no one else has bid

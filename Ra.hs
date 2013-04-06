@@ -49,7 +49,7 @@ instance ToChar Tile where
      Ra              -> 'R'
      Pharaoh         -> 'P'
      God             -> 'G'
-     Gold            -> '#'
+     Gold            -> '$'
      Nile            -> '-'
      Flood           -> '~'
      Monument mt     -> toChar mt
@@ -255,24 +255,54 @@ scoreEpoch b = forAllPlayers (scoreEpochForPlayer isFinal pharCounts sunTotals) 
 totalSunCount :: SunsUpDown -> Int
 totalSunCount = sum . map sunValue . fst . turnSunsFaceUp
 
+data ScoreReason = ScGods Int
+                 | ScPharaohs Int ComparativeScoreReason
+                 | ScNiles Int Bool
+                 | ScCivs Int Int
+                 | ScGolds Int
+                 | ScMonuments Int
+                 | ScSuns Int ComparativeScoreReason
+                 deriving (Show, Eq)
+
+scoreFrom r = case r of
+  ScGods i       -> i
+  ScPharaohs i _ -> i
+  ScNiles i _    -> i
+  ScCivs i _     -> i
+  ScGolds i      -> i
+  ScMonuments i  -> i
+  ScSuns i _     -> i
+
+-- did you get points because you had the most of something?  the least?  everyone had the same?
+data ComparativeScoreReason = Min | Max | AllEqual | Neutral deriving (Show, Eq)
+
 scoreEpochForPlayer :: Bool -> [Int] -> [Int] -> Player -> Player
 scoreEpochForPlayer isFinal pharCounts sunTotals p = p { score = max 0 (score p + total) }
   where 
      total :: Int
-     total = sum $ traceShow componentScores componentScores
-     componentScores = [2*num God, pharaohScore, nileScore, civScore, 3*num Gold] 
-                           ++ (if isFinal then [monumentScore, sunScore] else [])
-     pharaohScore | length (nub pharCounts) < 2       = 0 -- all have same num pharaohs
-                  | num Pharaoh == minimum pharCounts = -2
-                  | num Pharaoh == maximum pharCounts = 5
-                  | otherwise                         = 0 -- neither min nor max
-     sunScore     | length (nub sunTotals) < 2        = 0
-                  | sunTotal == minimum sunTotals     = -5
-                  | sunTotal == maximum sunTotals     = 5
-                  | otherwise                         = 0
+     total = sum $ map scoreFrom $ traceShow componentScores componentScores
+     componentScores = [ScGods (2*num God)
+                       , pharaohScore
+                       , nileScore
+                       , civScore
+                       , ScGolds (3*num Gold)] 
+                       ++ (if isFinal then [monumentScore, sunScore] else [])
+     
+     pharaohScore | length (nub pharCounts) < 2       = ScPharaohs 0    AllEqual
+                  | num Pharaoh == minimum pharCounts = ScPharaohs (-2) Min
+                  | num Pharaoh == maximum pharCounts = ScPharaohs 5    Max
+                  | otherwise                         = ScPharaohs 0    Neutral
+     sunScore     | length (nub sunTotals) < 2        = ScSuns     0    AllEqual
+                  | sunTotal == minimum sunTotals     = ScSuns     (-5) Min
+                  | sunTotal == maximum sunTotals     = ScSuns     5    Max
+                  | otherwise                         = ScSuns     0    Neutral
      sunTotal = totalSunCount (suns p)
-     nileScore = if num Flood < 1 then 0 else num Nile + num Flood
-     civScore = [-5, 0, 0, 5, 10, 15] !! length (nub civTypes)
+     nileScore = if num Flood == 0 
+       then ScNiles 0 False 
+       else ScNiles (num Nile + num Flood) True
+     civScore = ScCivs ([-5, 0, 0, 5, 10, 15] !! numCivTypes) numCivTypes
+       where
+         numCivTypes = length (nub civTypes)
      civTypes = [t | Civilization t <- tiles p]
      monumentScore = scoreMonuments monumentTypes
      monumentTypes = [t | Monument t <- tiles p]
@@ -280,11 +310,11 @@ scoreEpochForPlayer isFinal pharCounts sunTotals p = p { score = max 0 (score p 
      num :: Tile -> Int
      num t = length $ filter (==t) $ tiles p 
 
-scoreMonuments :: [MonumentType] -> Int
-scoreMonuments ts = sum [ [0,1,2,3,4,5,6,10,15] !! length (nub ts)
-                        , sum $ map scoreIdenticalGroup $ filter ( (<3) . length) $ group $ sort ts
-                        ]
+scoreMonuments :: [MonumentType] -> ScoreReason
+scoreMonuments ts = ScMonuments $ sum [ scoreForDifferents, scoreForIdenticals ]
   where
+    scoreForDifferents = [0,1,2,3,4,5,6,10,15] !! length (nub ts)
+    scoreForIdenticals = sum $ map scoreIdenticalGroup $ filter ( (<3) . length) $ group $ sort ts
     scoreIdenticalGroup mts = [0,0,0,5,10,15] !! length mts
 endEpoch :: Board -> (Bool, Board)
 endEpoch b = case epoch b of
@@ -505,6 +535,11 @@ loop board = do
          if currentPlayerCanUseGod board
          then useGodOrCancel pi board >>= loop
          else putStrLn "You have no God tiles to use or there are no tiles to take!  Choose again." >> loop board
+       "s" -> do
+         putStrLn "s - computing score as though at epoch end"
+         let scoredBoard = scoreEpoch board
+         putStrLn (boardToString scoredBoard) 
+         loop board
        "r"   -> do
          putStrLn "r - calling Ra"
          let reason = if blockFull board then BlockFull else RaCalled
