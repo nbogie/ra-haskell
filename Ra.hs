@@ -21,6 +21,7 @@ data Tile = Ra
           | Civilization CivilizationType
           | Disaster DisasterType 
           deriving (Eq, Show, Ord)
+
 {--
   We ask isTempTile only of a Tile Storeable, and Ra and Disaster tiles are not storeable.  
   However, Disaster tiles may be taken using a god, that is not storeability but takeability.
@@ -30,7 +31,7 @@ isPermanentTile ::  Tile -> Bool
 isPermanentTile = not . isTempTile
 isTempTile :: Tile -> Bool
 isTempTile t = case t of
-  Ra             -> True -- TODO: this question should never be asked
+  Ra             -> True -- TODesign: this question should never be asked
   Pharaoh        -> False
   God            -> True
   Gold           -> True
@@ -38,12 +39,20 @@ isTempTile t = case t of
   Flood          -> True
   Monument _     -> False
   Civilization _ -> True
-  Disaster _     -> True --TODO: this question should never be asked
+  Disaster _     -> True --TODesign: this question should never be asked
 
 isGoddable :: Tile -> Bool
 isGoddable God = False
-isGoddable Ra  = False -- TODO: this question should never be asked.  we ask isGoddable of an Tile Auctionable
+-- TODesign: this question should never be asked.  we ask isGoddable of an Tile Auctionable
+isGoddable Ra  = False
 isGoddable _   = True
+
+-- can be kept in player tile set on auction win or after exchange by god
+-- TODesign: solve with types
+isStoreable :: Tile -> Bool
+isStoreable (Disaster _) = False
+isStoreable Ra           = False
+isStoreable _            = True
 
 instance ToChar Tile where
    toChar t = case t of
@@ -86,7 +95,7 @@ data DisasterType = Funeral
 
 instance ToChar DisasterType where
    toChar t = case t of
-     Funeral    -> 'p'
+     Funeral    -> 'f'
      Unrest     -> 'u'
      Drought    -> '_'
      Earthquake -> '0'
@@ -395,25 +404,42 @@ isStillInPlay pi b = not $ null $ faceUpSuns $ handOf pi b
 handOf :: PlayerNum -> Board -> Player
 handOf pi b = players b M.! pi
 
-getDisasterResolutions :: PlayerNum -> Board -> IO [DisasterResolution]
-getDisasterResolutions pi b = do
-  let disasterTiles    = [t | t@(Disaster _) <- block b]
-      nonDisasterTiles = block b \\ disasterTiles
+getDisasterResolutions:: PlayerNum -> [Tile] -> Board -> IO [DisasterResolution]
+getDisasterResolutions pi gainedTiles b = do
+  let disasterTiles    = [t | t@(Disaster _) <- gainedTiles]
+      disasterTypes    = [dtyp | Disaster dtyp <- disasterTiles]
+      nonDisasterTiles = gainedTiles \\ disasterTiles
       playerTiles      = tiles $ handOf pi b
       candidates       = playerTiles ++ nonDisasterTiles
-  getRes pi (playerTiles ++ nonDisasterTiles) [dtyp | Disaster dtyp <- disasterTiles]
+  getRes pi candidates disasterTypes
+
 
 getRes :: PlayerNum -> [Tile] -> [DisasterType] -> IO [DisasterResolution]
 getRes pi pts [] = return []
 getRes pi pts dts = do
   chosenDt <- pickOneFromMenu pi dts "Pick a disaster to resolve: "
   discards <- pickDiscardsForDisaster pi pts chosenDt
+  putStrLn $ "Discarded "++show discards
   let pts' = pts \\ discards
   let dts' = dts \\ [chosenDt]
   otherResns <- getRes pi pts' dts'
   return $ (chosenDt, discards) : otherResns
 
-pickDiscardsForDisaster pi ts dis = return []
+pickDiscardsForDisaster ::  PlayerNum -> [Tile] -> DisasterType -> IO [Tile]
+pickDiscardsForDisaster pi ts dis = return $ pickDis dis
+  where 
+  relevant= filter (`elem` relatedToDisaster dis) ts
+  pickDis Funeral = take 2 relevant
+  pickDis Drought = take 2 $ allz Flood ++ allz Nile
+            where allz t = filter (==t) relevant
+  -- TODO: let the user choose discards for unrest and quake
+  pickDis _ = take 2 relevant 
+
+relatedToDisaster :: DisasterType -> [Tile]
+relatedToDisaster Drought = [Flood, Nile]
+relatedToDisaster Funeral = [Pharaoh]
+relatedToDisaster Unrest = map Civilization [minBound .. maxBound]
+relatedToDisaster Earthquake = map Monument [minBound .. maxBound]
 
 af :: AuctionReason -> Board -> IO Board
 af reason b = do
@@ -421,7 +447,7 @@ af reason b = do
   putStrLn $ boardToString b
   bestBid  <- findBestBid (reason == RaCalled) b (playersForAuction b) Nothing
   disResns <- case bestBid of
-                   Just (sun, winner) -> getDisasterResolutions winner b
+                   Just (sun, winner) -> getDisasterResolutions winner (block b) b
                    Nothing            -> return []
   let (newBoard, winr) = case bestBid of
                             Just (sun, winner) -> (winAuction winner (block b) disResns  b sun, Just winner)
@@ -484,22 +510,23 @@ modTiles :: ([Tile] -> [Tile]) -> Player -> Player
 modTiles f p = p { tiles = f (tiles p) }
 
 addToTilesOf :: PlayerNum -> [Tile] -> Board -> Board
-addToTilesOf pi ts b = b { players = M.adjust (modTiles (++ ts)) pi (players b) }
+addToTilesOf pi ts b = b { players = M.adjust (modTiles (++ storeables)) pi (players b) }
+  where storeables = filter isStoreable ts
 
 removeFromTilesOf :: PlayerNum -> [Tile] -> Board -> Board
 removeFromTilesOf pi ts b = b { players = M.adjust (modTiles (\\ ts)) pi (players b) }
 
 -- wins an auction, resolving given disasters with the given discards
-winAuction ::  PlayerNum -> [Tile] -> [(DisasterType, [Tile])] -> Board -> Sun -> Board
+winAuction ::  PlayerNum -> [Tile] -> [DisasterResolution] -> Board -> Sun -> Board
 winAuction pi ts disasterResolutions b winningSun = 
   exchangeSun pi winningSun $ resolveDisasters pi disasterResolutions $ wipeBlock $ addToTilesOf pi nonDisasterTiles b
     where  wipeBlock b = b { block = []} 
            nonDisasterTiles = ts \\ disasterTiles
            disasterTiles    = [t | t@(Disaster _) <- ts]
 
+-- shared between winAuction and exchangeGod
 resolveDisasters :: PlayerNum -> [DisasterResolution] -> Board -> Board
 resolveDisasters pi rs b = foldl' (resolveDisaster pi) b rs
-
 resolveDisaster :: PlayerNum -> Board -> DisasterResolution -> Board
 resolveDisaster pi b (disasterType, discards) = removeFromTilesOf pi discards b
 
@@ -520,13 +547,13 @@ exchangeSun pi toBoard b =
     }
   where f (ups, downs) = (ups \\ [toBoard], boardSun b:downs)
 
--- todo: resolve disasters if picked
-exchangeGod :: PlayerNum -> Tile -> Board -> Board
-exchangeGod pi t b = removeFromBlock [t] $ removeFromTilesOf pi [God] $ addToTilesOf pi [t] b
+exchangeGod :: PlayerNum -> Tile -> [DisasterResolution] -> Board -> Board
+exchangeGod pi t disResns b = 
+  resolveDisasters pi disResns $ removeFromBlock [t] $ removeFromTilesOf pi [God] $ addToTilesOf pi gainableTile b
   where
    removeFromBlock :: [Tile] -> Board -> Board
    removeFromBlock ts b = b { block = block b \\ ts }
-
+   gainableTile = if isStoreable t then [t] else []
 
 -- todo: this should be local to useGodOrCancel
 tilesOnBlockMapping :: Block -> [(Int, Tile)]
@@ -543,14 +570,17 @@ useGodOrCancel pi b = do
   if l == "c"  -- cancel
   then 
     return b
-  else
+  else do
      case readInt l >>= validOnBlock of
        -- TODO: allow multiple useGodOrCancels, if player has multiple gods
-       Just tile -> putStrLn ("You chose "++show tile) >> return (advancePlayer (exchangeGod pi tile b))
+       Just tile -> do
+         putStrLn ("Taking (with God tile): " ++ show tile) 
+         disResns <- getDisasterResolutions pi [tile] b
+         return (advancePlayer (exchangeGod pi tile disResns b))
+
        Nothing -> useGodOrCancel pi b 
        where validOnBlock :: Int -> Maybe Tile
              validOnBlock n =  fmap snd $ find ((==n) . fst) mapping
-             -- numsForBlockTiles =  map fst mapping
              mapping = tilesOnBlockMapping $ block b
 
 pickOneFromMenu :: (Eq a, Show a) => PlayerNum -> [a] -> String -> IO a

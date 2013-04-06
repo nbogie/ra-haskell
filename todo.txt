@@ -1,7 +1,10 @@
 * improve types so that certain tiles are not holdable in a hand (disasters and Ra tiles).
-* implement disaster resolution
 * multiple ui's - e.g. curses interface - will highlight game/ui boundary
+* note: it is valid to bid on an empty auction (you may wish to gain a better sun)
+* implement user-choice during resolution of unrest and quake
+* check what happens when we choose to god, but there is nothing pickable (only other god tiles, say).
 
 DONE:
 * correct the design: when the block is full, an auction isn't automatically called - player may call ra, OR use god(s) if held. Remember this invocation of ra is classed involuntary.
 * implement forced bidding for caller when auction has been called voluntarily and no one else has bid
+* implemented no-user-choice disaster resolution
