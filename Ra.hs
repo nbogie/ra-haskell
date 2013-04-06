@@ -1,6 +1,6 @@
 module Main where
 import Shuffle
-import Data.List (nub, sort, group, (\\), find)
+import Data.List (nub, sort, group, (\\), find, foldl')
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import Debug.Trace (traceShow)
 import Test.HUnit
@@ -395,13 +395,36 @@ isStillInPlay pi b = not $ null $ faceUpSuns $ handOf pi b
 handOf :: PlayerNum -> Board -> Player
 handOf pi b = players b M.! pi
 
+getDisasterResolutions :: PlayerNum -> Board -> IO [DisasterResolution]
+getDisasterResolutions pi b = do
+  let disasterTiles    = [t | t@(Disaster _) <- block b]
+      nonDisasterTiles = block b \\ disasterTiles
+      playerTiles      = tiles $ handOf pi b
+      candidates       = playerTiles ++ nonDisasterTiles
+  getRes pi (playerTiles ++ nonDisasterTiles) [dtyp | Disaster dtyp <- disasterTiles]
+
+getRes :: PlayerNum -> [Tile] -> [DisasterType] -> IO [DisasterResolution]
+getRes pi pts [] = return []
+getRes pi pts dts = do
+  chosenDt <- pickOneFromMenu pi dts "Pick a disaster to resolve: "
+  discards <- pickDiscardsForDisaster pi pts chosenDt
+  let pts' = pts \\ discards
+  let dts' = dts \\ [chosenDt]
+  otherResns <- getRes pi pts' dts'
+  return $ (chosenDt, discards) : otherResns
+
+pickDiscardsForDisaster pi ts dis = return []
+
 af :: AuctionReason -> Board -> IO Board
 af reason b = do
   putStrLn $ "An auction!  Reason: " ++ show reason
   putStrLn $ boardToString b
-  bestBid <- findBestBid (reason == RaCalled) b (playersForAuction b) Nothing
+  bestBid  <- findBestBid (reason == RaCalled) b (playersForAuction b) Nothing
+  disResns <- case bestBid of
+                   Just (sun, winner) -> getDisasterResolutions winner b
+                   Nothing            -> return []
   let (newBoard, winr) = case bestBid of
-                            Just (sun, winner) -> (winAuction winner (block b) b sun, Just winner)
+                            Just (sun, winner) -> (winAuction winner (block b) disResns  b sun, Just winner)
                             Nothing            -> (b , Nothing)
   let winnerIdStr = maybe "All Passed" (("Auction won by player " ++) . show) winr
   putStrLn winnerIdStr
@@ -466,12 +489,22 @@ addToTilesOf pi ts b = b { players = M.adjust (modTiles (++ ts)) pi (players b) 
 removeFromTilesOf :: PlayerNum -> [Tile] -> Board -> Board
 removeFromTilesOf pi ts b = b { players = M.adjust (modTiles (\\ ts)) pi (players b) }
 
-winAuction ::  PlayerNum -> [Tile] -> Board -> Sun -> Board
-winAuction pi ts b lostSun = 
-  exchangeSun pi lostSun $ wipeBlock $ addToTilesOf pi ts b
+-- wins an auction, resolving given disasters with the given discards
+winAuction ::  PlayerNum -> [Tile] -> [(DisasterType, [Tile])] -> Board -> Sun -> Board
+winAuction pi ts disasterResolutions b winningSun = 
+  exchangeSun pi winningSun $ resolveDisasters pi disasterResolutions $ wipeBlock $ addToTilesOf pi nonDisasterTiles b
     where  wipeBlock b = b { block = []} 
+           nonDisasterTiles = ts \\ disasterTiles
+           disasterTiles    = [t | t@(Disaster _) <- ts]
+
+resolveDisasters :: PlayerNum -> [DisasterResolution] -> Board -> Board
+resolveDisasters pi rs b = foldl' (resolveDisaster pi) b rs
+
+resolveDisaster :: PlayerNum -> Board -> DisasterResolution -> Board
+resolveDisaster pi b (disasterType, discards) = removeFromTilesOf pi discards b
 
 type SunsUpDown = ([Sun], [Sun])
+type DisasterResolution = (DisasterType, [Tile])
 
 turnSunsFaceUpFor :: PlayerNum -> Sun -> Board -> Board
 turnSunsFaceUpFor pi s b = b { players = M.adjust (modSuns turnSunsFaceUp) pi (players b) }
@@ -499,6 +532,8 @@ exchangeGod pi t b = removeFromBlock [t] $ removeFromTilesOf pi [God] $ addToTil
 tilesOnBlockMapping :: Block -> [(Int, Tile)]
 tilesOnBlockMapping bl = zip  [0..] (filter isGoddable bl)
 
+mappingFor :: [a] -> [(Int, a)]
+mappingFor items = zip [0..] items
 
 useGodOrCancel :: PlayerNum -> Board -> IO Board
 useGodOrCancel pi b = do
@@ -515,8 +550,19 @@ useGodOrCancel pi b = do
        Nothing -> useGodOrCancel pi b 
        where validOnBlock :: Int -> Maybe Tile
              validOnBlock n =  fmap snd $ find ((==n) . fst) mapping
-             numsForBlockTiles =  map fst mapping
+             -- numsForBlockTiles =  map fst mapping
              mapping = tilesOnBlockMapping $ block b
+
+pickOneFromMenu :: (Eq a, Show a) => PlayerNum -> [a] -> String -> IO a
+pickOneFromMenu pi items prompt = do
+  putStrLn prompt
+  putStrLn $ show (mappingFor items)
+  l <- getLine
+  case readInt l >>= itemIfValid of
+    Just x -> putStrLn ("You chose " ++ show x) >> return x
+    Nothing -> putStrLn ("Invalid choice") >> pickOneFromMenu pi items prompt
+    where 
+      itemIfValid n = fmap snd $ find ((==n) . fst) (mappingFor items)
 
 currentPlayerCanUseGod board = blockIsNotEmpty board && God `elem` (tiles . active) board
 
