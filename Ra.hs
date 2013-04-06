@@ -2,6 +2,7 @@ module Main where
 import Shuffle
 import Data.List (nub, sort, group, (\\), find)
 import Data.Maybe (fromMaybe, isJust, isNothing)
+import Debug.Trace (traceShow)
 
 import Control.Arrow ((&&&))
 import Control.Monad (forM)
@@ -255,10 +256,12 @@ totalSunCount :: SunsUpDown -> Int
 totalSunCount = sum . map sunValue . fst . turnSunsFaceUp
 
 scoreEpochForPlayer :: Bool -> [Int] -> [Int] -> Player -> Player
-scoreEpochForPlayer isFinal pharCounts sunTotals p = p { score = score p + total }
+scoreEpochForPlayer isFinal pharCounts sunTotals p = p { score = max 0 (score p + total) }
   where 
      total :: Int
-     total = max 0 $ sum $ [2*(num God), pharaohScore, nileScore, civScore, 3*(num Gold)] ++ (if isFinal then [monumentScore, sunScore] else [])
+     total = sum $ traceShow componentScores componentScores
+     componentScores = [2*num God, pharaohScore, nileScore, civScore, 3*num Gold] 
+                           ++ (if isFinal then [monumentScore, sunScore] else [])
      pharaohScore | length (nub pharCounts) < 2       = 0 -- all have same num pharaohs
                   | num Pharaoh == minimum pharCounts = -2
                   | num Pharaoh == maximum pharCounts = 5
@@ -269,7 +272,7 @@ scoreEpochForPlayer isFinal pharCounts sunTotals p = p { score = score p + total
                   | otherwise                         = 0
      sunTotal = totalSunCount (suns p)
      nileScore = if num Flood < 1 then 0 else num Nile + num Flood
-     civScore = [-5, 0, 0, 5, 10, 15] !! (length $ nub civTypes)
+     civScore = [-5, 0, 0, 5, 10, 15] !! length (nub civTypes)
      civTypes = [t | Civilization t <- tiles p]
      monumentScore = scoreMonuments monumentTypes
      monumentTypes = [t | Monument t <- tiles p]
@@ -278,7 +281,7 @@ scoreEpochForPlayer isFinal pharCounts sunTotals p = p { score = score p + total
      num t = length $ filter (==t) $ tiles p 
 
 scoreMonuments :: [MonumentType] -> Int
-scoreMonuments ts = sum [ [0,1,2,3,4,5,6,10,15] !! (length $ nub ts)
+scoreMonuments ts = sum [ [0,1,2,3,4,5,6,10,15] !! length (nub ts)
                         , sum $ map scoreIdenticalGroup $ filter ( (<3) . length) $ group $ sort ts
                         ]
   where
