@@ -1,7 +1,7 @@
 module Main where
 import Shuffle
 import Data.List (nub, sort, group, (\\), find)
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (fromMaybe, isJust, isNothing)
 
 import Control.Arrow ((&&&))
 import Control.Monad (forM)
@@ -150,12 +150,12 @@ blockToSummaryString  = unlines . map show . sort . map (head &&& length) . grou
 
 blockToString :: Block -> String
 blockToString = padWith '.' 8 . map toChar
-playerToString :: Player -> String
-playerToString p = show (suns p) ++ ", " ++ ts
+playerToString ::(PlayerNum, Player) -> String
+playerToString (i, p) = "Player: " ++ show i ++ ": " ++ show (suns p) ++ ", " ++ ts
   where ts            = tilesToString . tiles $ p
         tilesToString = map toChar . concat . group . sort 
 
-raTrackToString ::  Board -> [Char]
+raTrackToString ::  Board -> String
 raTrackToString b = padWith '.' (raCountMax (numPlayers b)) $ replicate (raCount b) 'R'
 
 padWith c n s | length s >= n = s
@@ -172,13 +172,19 @@ raCountMax 5 = 10
 raCountMax other = error $ "BUG in raCountMax: illegal number of players: " ++ show other
 
 boardToString :: Board -> String
-boardToString b = unlines [ 
-                            "Block:    " ++ blockToString (block b)
+boardToString b = unlines $ [ 
+                            show $ epoch b
+                          , "Block:    " ++ blockToString (block b)
                           , "Ra Track: " ++ raTrackToString b
-                          , "Player:   " ++ show (currentPlayerId b) ++ " hand: " ++ playerToString (active b)
-                          , show $ epoch b
-                          -- , blockToSummaryString  $ block b
-                          ]
+                          , "Sun:      " ++ show (boardSun b)
+                          ] ++ playerDisplay
+   where 
+     playerDisplay :: [String]
+     playerDisplay = map playerToString (playersFromCurrent b)
+
+playersFromCurrent :: Board -> [(PlayerNum, Player)]
+playersFromCurrent b = map (\i -> (i, players b M.! i)) (take lim $ playerCycle b)
+  where lim = numPlayers b
 data Player = Player { suns :: ([Sun], [Sun])
                      , tiles :: [Tile]
                      } deriving (Show, Eq)
@@ -216,14 +222,14 @@ initBoard ts = Board
              , currentPlayerId = 0
              } 
 
-playerCycleFromTo pi mx = map (\i -> i `mod` mx) [pi ..]
+playerCycleFromTo pi mx = map (`mod` mx) [pi ..]
 playerCycle b = playerCycleFromTo  (currentPlayerId b) (numPlayers b)
 
 active ::  Board -> Player
 active board = players board M.! currentPlayerId board
 
 advancePlayer :: Board -> Board
-advancePlayer b = b { currentPlayerId = (currentPlayerId b + 1) `mod` (numPlayers b) }
+advancePlayer b = b { currentPlayerId = (currentPlayerId b + 1) `mod` numPlayers b }
 advanceEpoch :: Board -> Board
 advanceEpoch b = b { epoch = adv (epoch b) } 
   where
@@ -249,9 +255,9 @@ raTrackFull :: Board -> Bool
 raTrackFull = (>=8) . raCount
 
 main ::  IO ()
-main = do
+main = fmap initBoard initDeck >>= loop 
   -- mapM_ (putStrLn . toDebugStr) $ sort $ nub allTiles
-  fmap initBoard initDeck >>= loop 
+
 incRaCount :: Board -> Board
 incRaCount ( b@Board{ raCount = rc }) = b { raCount = rc + 1 }
 
@@ -259,7 +265,7 @@ deckEmpty ::  Board -> Bool
 deckEmpty = null . deck
 
 drawTile :: Board -> (AuctionReason -> Board -> IO Board) -> (Board -> IO Board) -> IO Board
-drawTile board auctionFn normalFn = do
+drawTile board auctionFn normalFn =
   if deckEmpty board 
   then do
     print "END - no more tiles"
@@ -282,11 +288,7 @@ drawTile board auctionFn normalFn = do
       next -> do
          let newBlock = next : block board
          let newBoard = board { deck = rest, block = newBlock } 
-         if blockFull newBoard
-         then
-           fmap advancePlayer $ auctionFn BlockFull newBoard
-         else
-           fmap advancePlayer $ normalFn newBoard
+         fmap advancePlayer $ normalFn newBoard
 
 data AuctionReason = BlockFull | RaDrawn | RaCalled deriving (Eq, Show)
 
@@ -314,36 +316,46 @@ af :: AuctionReason -> Board -> IO Board
 af reason b = do
   putStrLn $ "An auction!  Reason: " ++ (show reason)
   putStrLn $ boardToString b
-  bestBid <- findBestBid b (playersForAuction b) Nothing
-  let newBoard = case bestBid of
-                   Just (sun, winner) -> winAuction winner (block b) b sun
-                   Nothing            -> b 
-  return $ newBoard { block = if reason == BlockFull then [] else (block newBoard) }
+  bestBid <- findBestBid (reason == RaCalled) b (playersForAuction b) Nothing
+  let (newBoard, winr) = case bestBid of
+                            Just (sun, winner) -> (winAuction winner (block b) b sun, Just winner)
+                            Nothing            -> (b , Nothing)
+  let winnerIdStr = maybe "All Passed" (("Auction won by player " ++) . show) winr
+  putStrLn winnerIdStr
+  return $ newBoard { block = if reason == BlockFull then [] else block newBoard }
 
-getBidChoice :: Board -> PlayerNum -> Maybe (Sun, PlayerNum) -> IO (Maybe (Sun, PlayerNum))
-getBidChoice b pi currBid = do
+getBidChoice :: Bool -> Board -> PlayerNum -> Maybe (Sun, PlayerNum) -> IO (Maybe (Sun, PlayerNum))
+getBidChoice isMandatory b pi currBid = do
      let possibleBids = map sunValue $ filter ( > (maybe (Sun 0) fst currBid)) $ faceUpSuns $ handOf pi b
-     putStrLn $ show pi ++ ": Enter bid: " ++ show possibleBids ++ " or hit return to pass: "
+     let passStr = if isMandatory then ".  You must bid as you called Ra: " else " or hit return to pass: "
+     putStrLn $ show pi ++ ": Enter bid: " ++ show possibleBids ++ passStr
      l <- getLine
      case l of
-       ""    -> return Nothing
+       ""    -> if isMandatory 
+                then putStrLn "You must bid" >> getBidChoice isMandatory b pi currBid 
+                else return Nothing
        other -> case readInt l of
          Just i -> if i `elem` possibleBids
                      then return $ Just (Sun i, pi)
-                     else putStrLn "You don't have that sun!" >> getBidChoice b pi currBid
-         _      -> putStrLn "What?" >> getBidChoice b pi currBid
+                     else putStrLn "You don't have that sun!" >> getBidChoice isMandatory b pi currBid
+         _      -> putStrLn "What?" >> getBidChoice isMandatory b pi currBid
 
-findBestBid :: Board -> [PlayerNum] -> Maybe (Sun, PlayerNum)  -> IO (Maybe (Sun, PlayerNum))
-findBestBid b [] topBid = return topBid
-findBestBid b (pi:pis) topBid = 
+findBestBid :: Bool -> Board -> [PlayerNum] -> Maybe (Sun, PlayerNum)  -> IO (Maybe (Sun, PlayerNum))
+findBestBid _ b [] topBid = return topBid
+findBestBid lastMustBid b (pi:pis) topBid = do
+     let isLast = null pis 
      if isStillInPlay pi b && maybe True (((pi,b) `canBidHigherThan`) . fst) topBid
-     then do
-       bc <- getBidChoice b pi topBid
-       let newBid = if isJust bc then bc else topBid
-       findBestBid b pis newBid
+     then
+        if isLast && isNothing topBid && lastMustBid
+        then
+           getBidChoice True b pi topBid
+        else do
+           bc <- getBidChoice False b pi topBid
+           let newBid = if isJust bc then bc else topBid
+           findBestBid lastMustBid b pis newBid
      else do 
        putStrLn $ "You cannot bid (better than " ++ show topBid ++ ")"
-       findBestBid b pis topBid
+       findBestBid lastMustBid b pis topBid
 
 canBidHigherThan :: (PlayerNum, Board) -> Sun -> Bool
 canBidHigherThan (pi, board) bid = 
@@ -424,25 +436,28 @@ loop ::  Board -> IO ()
 loop board = do
   let keyPrompt = "Enter return (draw tile), g(use god), r(call Ra), or q(quit)."
   let pi = currentPlayerId board
+  let mayDraw = blockFull board
   if isStillInPlay pi board then do
      putStrLn $ (show pi) ++ ": " ++ keyPrompt
      putStrLn $ boardToString board
      l <- getLine
      case l of
-       ""  -> putStrLn "return - Drawing a tile" >> drawTile board af nf >>= loop
-       "g" -> do
+       ""    -> if blockFull board
+                then
+                  putStrLn "Block is full - you must call Ra" >> loop board
+                  else
+                  putStrLn "return - Drawing a tile" >> drawTile board af nf >>= loop
+       "q"   -> putStrLn "q - quitting"
+       "g"   -> do
          putStrLn "g - god"
          if currentPlayerCanUseGod board
          then useGodOrCancel pi board >>= loop
          else (putStrLn "You have no God tiles to use or there are no tiles to take!  Choose again." >> loop board)
-       "r" -> do
+       "r"   -> do
          putStrLn "r - calling Ra"
-         fmap advancePlayer (af RaCalled board) >>= loop
-       "q" -> do
-         putStrLn "q - quitting"
-       other -> do 
-         putStrLn $ "You entered nonsense: " ++ show other
-         loop board
+         let reason = if blockFull board then BlockFull else RaCalled
+         fmap advancePlayer (af reason board) >>= loop
+       other -> (putStrLn $ "You entered nonsense: " ++ show other) >> loop board
      else do
        putStrLn "Skipping player - no suns left"
        loop (advancePlayer board)
