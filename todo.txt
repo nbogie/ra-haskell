@@ -3,6 +3,7 @@
 * note: it is valid to bid on an empty auction (you may wish to gain a better sun)
 * implement user-choice during resolution of unrest and quake
 * check what happens when we choose to god, but there is nothing pickable (only other god tiles, say).
+* leverage the typed scoring by providing a scoring breakdown in the UI, and maybe a hint mode telling you what the current block is immediately worth to you.
 
 DONE:
 * correct the design: when the block is full, an auction isn't automatically called - player may call ra, OR use god(s) if held. Remember this invocation of ra is classed involuntary.
