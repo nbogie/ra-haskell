@@ -4,6 +4,7 @@ import Data.List (nub, sort, group, (\\), find, foldl')
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import Debug.Trace (traceShow)
 import Test.HUnit
+import System.Environment(getArgs)
 
 import Control.Arrow ((&&&))
 import Control.Monad (forM)
@@ -129,7 +130,7 @@ allTiles = replicate 30 Ra      ++
 
 -- a tweaked set for an event-heavy game during dev
 allTilesTweaked = replicate 20 Ra ++ 
-           replicate 16 God     ++ 
+           replicate 30 God     ++ 
            replicate 25 Pharaoh ++ 
            replicate 4 funeral  ++ 
            replicate 25 Nile    ++ 
@@ -347,16 +348,20 @@ endEpoch b = case epoch b of
 forAllPlayers :: (Player -> Player) -> Board -> Board
 forAllPlayers f b = b{ players = M.map f (players b) } 
 
-initDeck ::  IO [Tile]
-initDeck = shuffle allTiles
+initDeck :: [Tile] -> IO [Tile]
+initDeck = shuffle
 
 raTrackFull :: Board -> Bool
 raTrackFull = (>=8) . raCount
 
 main ::  IO ()
 main = do
+  args <- getArgs
+  let tiles = case args of
+                ["-d"] -> allTilesTweaked
+                _      -> allTiles
   _counts <- tests
-  fmap initBoard initDeck >>= loop 
+  fmap initBoard (initDeck tiles) >>= loop 
   -- mapM_ (putStrLn . toDebugStr) $ sort $ nub allTiles
 
 incRaCount :: Board -> Board
@@ -585,6 +590,7 @@ useGodOrCancel pi b = do
   else do
      case readInt l >>= validOnBlock of
        -- TODO: allow multiple useGodOrCancels, if player has multiple gods
+       -- TODO: if done here, ensure there are still goddable tiles.
        Just tile -> do
          putStrLn ("Taking (with God tile): " ++ show tile) 
          disResns <- getDisasterResolutions pi [tile] b
@@ -606,7 +612,10 @@ pickOneFromMenu pi items prompt = do
     where 
       itemIfValid n = fmap snd $ find ((==n) . fst) (mappingFor items)
 
-currentPlayerCanUseGod board = blockIsNotEmpty board && God `elem` (tiles . active) board
+currentPlayerCanUseGod board = playerHasGodTile && blockHasGoddableTiles
+  where
+     playerHasGodTile      = elem God . tiles . active $ board
+     blockHasGoddableTiles = not . null . filter isGoddable . block $ board
 
 loop ::  Board -> IO ()
 loop board = do
