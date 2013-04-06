@@ -114,7 +114,6 @@ instance ToChar CivilizationType where
       Astronomy   -> '*'
       Writing     -> '&'
 
-
 allTiles = replicate 30 Ra      ++ 
            replicate 8 God      ++ 
            replicate 25 Pharaoh ++ 
@@ -128,6 +127,19 @@ allTiles = replicate 30 Ra      ++
            allMonuments         ++ 
            replicate 2 earthquake
 
+-- a tweaked set for an event-heavy game during dev
+allTilesTweaked = replicate 20 Ra ++ 
+           replicate 16 God     ++ 
+           replicate 25 Pharaoh ++ 
+           replicate 4 funeral  ++ 
+           replicate 25 Nile    ++ 
+           replicate 12 Flood   ++ 
+           replicate 4 drought  ++ 
+           allCivilizations     ++ 
+           replicate 8 unrest   ++ 
+           replicate 5 Gold     ++ 
+           allMonuments         ++ 
+           replicate 6 earthquake
 
 allMonumentTypes     = [minBound .. maxBound]
 allCivilizationTypes = [minBound .. maxBound]
