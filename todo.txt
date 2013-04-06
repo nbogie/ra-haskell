@@ -1,3 +1,4 @@
 * improve types so that certain tiles are not holdable in a hand (disasters and Ra tiles).
 * implement disaster resolution
 * multiple ui's - e.g. curses interface - will highlight game/ui boundary
+* implement forced bidding for caller when auction has been called voluntarily and no one else has bid
