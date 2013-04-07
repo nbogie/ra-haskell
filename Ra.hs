@@ -9,8 +9,16 @@ import System.Environment(getArgs)
 import Control.Arrow ((&&&))
 import Control.Monad (forM)
 import qualified Data.Map as M
-class ToChar a where
+class (Show a) => ToChar a where
+
   toChar :: a -> Char
+
+  -- freebies
+  toCharAndShow :: a -> String
+  toCharAndShow t = paren c ++ " " ++ show t
+     where 
+       c = toChar t
+       paren x = "(" ++ [x] ++ ")"
 
 data Tile = Ra 
           | Pharaoh 
@@ -94,6 +102,7 @@ data DisasterType = Funeral
                   | Earthquake 
                   deriving (Eq, Show, Ord, Bounded, Enum)
 
+
 instance ToChar DisasterType where
    toChar t = case t of
      Funeral    -> 'f'
@@ -152,9 +161,6 @@ funeral = Disaster Funeral
 drought = Disaster Drought
 unrest = Disaster Unrest
 earthquake = Disaster Earthquake
-
-toDebugStr :: Tile -> String
-toDebugStr t = toChar t : ' ' : show t
 
 newtype Sun = Sun { sunValue :: Int } deriving (Eq, Ord)
 instance Show Sun where
@@ -362,7 +368,6 @@ main = do
                 _      -> allTiles
   _counts <- tests
   fmap initBoard (initDeck tiles) >>= loop 
-  -- mapM_ (putStrLn . toDebugStr) $ sort $ nub allTiles
 
 incRaCount :: Board -> Board
 incRaCount ( b@Board{ raCount = rc }) = b { raCount = rc + 1 }
@@ -434,7 +439,7 @@ getDisasterResolutions pi gainedTiles b = do
 getRes :: PlayerNum -> [Tile] -> [DisasterType] -> IO [DisasterResolution]
 getRes pi pts [] = return []
 getRes pi pts dts = do
-  chosenDt <- pickOneFromMenu pi dts "Pick a disaster to resolve: "
+  chosenDt <- pickOneFromMenu toCharAndShow pi dts "Pick a disaster to resolve: "
   discards <- pickDiscardsForDisaster pi pts chosenDt
   putStrLn $ "Discarded "++show discards
   let pts' = pts \\ discards
@@ -451,8 +456,8 @@ pickDiscardsForDisaster pi ts dis = pickDis dis
             where allz t = filter (==t) relevant
   pickDis _ | length relevant <= 2 = return $ take 2 relevant -- no choice
             | otherwise            = do  -- guaranteed at least two choices
-    d1 <- pickOneFromMenu pi (sort relevant)           "Pick first discard"
-    d2 <- pickOneFromMenu pi (sort (relevant \\ [d1])) "Pick second discard"
+    d1 <- pickOneFromMenu toCharAndShow pi (sort relevant)           "Pick first discard"
+    d2 <- pickOneFromMenu toCharAndShow pi (sort (relevant \\ [d1])) "Pick second discard"
     return [d1,d2]
 
 relatedToDisaster :: DisasterType -> [Tile]
@@ -604,14 +609,14 @@ useGodOrCancel pi b = do
              validOnBlock n =  fmap snd $ find ((==n) . fst) mapping
              mapping = tilesOnBlockMapping $ block b
 
-pickOneFromMenu :: (Eq a, Show a) => PlayerNum -> [a] -> String -> IO a
-pickOneFromMenu pi items prompt = do
+pickOneFromMenu :: (Eq a) => (a -> String) -> PlayerNum -> [a] -> String -> IO a
+pickOneFromMenu shw pi items prompt = do
   putStrLn prompt
-  putStrLn $ show (mappingFor items)
+  putStrLn $ unwords $ map (\(n, i) -> show n ++ ":"++ shw i) (mappingFor items)
   l <- getLine
   case readInt l >>= itemIfValid of
-    Just x -> putStrLn ("You chose " ++ show x) >> return x
-    Nothing -> putStrLn ("Invalid choice") >> pickOneFromMenu pi items prompt
+    Just x -> putStrLn ("You chose " ++ shw x) >> return x
+    Nothing -> putStrLn ("Invalid choice") >> pickOneFromMenu shw pi items prompt
     where 
       itemIfValid n = fmap snd $ find ((==n) . fst) (mappingFor items)
 
@@ -632,7 +637,7 @@ loop board = do
      case l of
        ""    -> if blockFull board
                 then
-                  putStrLn "Block is full - you must call Ra" >> loop board
+                  putStrLn "Block is full - you must call Ra or use a God Tile" >> loop board
                   else
                   putStrLn "return - Drawing a tile" >> drawTile board af nf >>= loop
        "q"   -> putStrLn "q - quitting"
