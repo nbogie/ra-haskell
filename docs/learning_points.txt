@@ -1,0 +1,9 @@
+Ra.hs:576:19: Warning: Use list comprehension
+Found
+if isStoreable t then [t] else []
+Why not
+[t | isStoreable t]
+
+-------------------------------------------------
+-------------------------------------------------
+
