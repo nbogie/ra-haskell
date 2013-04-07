@@ -592,7 +592,7 @@ useGod pi b = do
    -- TODO: if done here, ensure there are still goddable tiles.
    putStrLn ("Took (with God tile): " ++ show tile) 
    disResns <- getDisasterResolutions pi [tile] b
-   return (advancePlayer (exchangeGod pi tile disResns b))
+   return $ exchangeGod pi tile disResns b
 
 pickOneFromMenu :: (Eq a) => (a -> String) -> PlayerNum -> [a] -> String -> IO a
 pickOneFromMenu shw pi items prompt = do
@@ -632,8 +632,11 @@ loop board = do
        "g"   -> do
          putStrLn "g - god"
          if currentPlayerCanUseGod board
-         then useGod pi board >>= loop
-         else putStrLn "You have no God tiles to use or there are no tiles to take!  Choose again." >> loop board
+         then
+           useGodMany1Times pi board >>= loop . advancePlayer
+         else do
+           putStrLn "You have no God tiles to use or there are no tiles to take!"
+           loop board
        "s" -> do
          putStrLn "s - computing score as though at epoch end"
          let scoredBoard = scoreEpoch board
@@ -648,6 +651,18 @@ loop board = do
        putStrLn "Skipping player - no suns left"
        loop (advancePlayer board)
 
+useGodMany1Times::  PlayerNum -> Board -> IO Board
+useGodMany1Times pi board = do
+   b <- useGod pi board
+   if currentPlayerCanUseGod b
+   then do
+      continueChoice <- pickOneFromMenu show pi [UseAnotherGod, FinishTurn] "Use another god?"
+      if continueChoice == UseAnotherGod 
+      then useGodMany1Times pi b
+      else return b
+   else return b
+
+data ContinueChoice = UseAnotherGod | FinishTurn deriving (Show, Eq)
 
 
 
