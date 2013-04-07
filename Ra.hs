@@ -388,28 +388,34 @@ drawTile :: Board -> IO Board
 drawTile board =
   if deckEmpty board 
   then do
-    print "END - no more tiles"
+    lift $ print "END - no more tiles"
     return board
   else do
     let (tile:rest) = deck board
+    setDeckM rest
     putStrLn $ "Tile drawn: " ++ show tile
     case tile of
       Ra -> do
-         let newBoard = incRaCount $ board { deck = rest }
-         if raTrackFull newBoard
+         incRaCountM
+         if raTrackFullM
          then do
-           print "Ra Track Full - Immediate End Of Epoch"
-           case (endEpoch . advancePlayer ) newBoard of
-             (True, b)  -> print "LAST EPOCH.  GAME OVER AFTER FINAL SCORING" >> return b
-             (False, b) -> return b
-         else
-           -- note: run the auction, first, then advance the player, then cede control finally
-           runAuction RaDrawn newBoard >>= return . advancePlayer
+           lift $ print "Ra Track Full - Immediate End Of Epoch"
+           advancePlayerM
+           endEpochM
+           if gameOverM
+           then do
+             lift $ print "LAST EPOCH.  GAME OVER AFTER FINAL SCORING"
+           else
+             lift $ print "Next epoch commences"
+         else do
+           runAuctionM RaDrawn
+           advancePlayerM
       next -> do
-         let newBlock = next : block board
-         let newBoard = board { deck = rest, block = newBlock } 
-         putStrLn $ boardToString newBoard 
-         return $ advancePlayer newBoard
+         placeTileInBlockFromDeckM next rest
+         -- let newBlock = next : block board
+         -- let newBoard = board { deck = rest, block = newBlock } 
+         putStrLn $ boardToString gets
+         advancePlayerM
 
 testDataMonumentScoring ::  (Integer, [MonumentType])
 testDataMonumentScoring =  (19, replicate 4 Pyramid ++ replicate 3 Temple ++ replicate 2 Fortress ++ [Sphinx])
