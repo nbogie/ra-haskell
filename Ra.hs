@@ -573,7 +573,7 @@ exchangeGod pi t disResns b =
   where
    removeFromBlock :: [Tile] -> Board -> Board
    removeFromBlock ts b = b { block = block b \\ ts }
-   gainableTile = if isStoreable t then [t] else []
+   gainableTile = [t | isStoreable t]
 
 -- todo: this should be local to useGodOrCancel
 tilesOnBlockMapping :: Block -> [(Int, Tile)]
