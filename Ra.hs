@@ -618,7 +618,7 @@ pickOneFromMenu pi items prompt = do
 currentPlayerCanUseGod board = playerHasGodTile && blockHasGoddableTiles
   where
      playerHasGodTile      = elem God . tiles . active $ board
-     blockHasGoddableTiles = not . null . filter isGoddable . block $ board
+     blockHasGoddableTiles = any isGoddable . block $ board
 
 loop ::  Board -> IO ()
 loop board = do
