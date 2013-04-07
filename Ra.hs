@@ -444,13 +444,15 @@ getDisasterResolutions pi gainedTiles b = do
       candidates       = playerTiles ++ nonDisasterTiles
   getRes pi candidates disasterTypes
 
+playMsg :: PlayerNum -> String -> IO ()
+playMsg pi msg = putStrLn $ "Player " ++ show pi ++ " >> " ++ msg
 
 getRes :: PlayerNum -> [Tile] -> [DisasterType] -> IO [DisasterResolution]
 getRes pi pts [] = return []
 getRes pi pts dts = do
   chosenDt <- pickOneFromMenu toCharAndShow pi dts "Pick a disaster to resolve: "
   discards <- pickDiscardsForDisaster pi pts chosenDt
-  putStrLn $ "Discarded "++show discards
+  playMsg pi $ "Discarded "++show discards
   let pts' = pts \\ discards
   let dts' = dts \\ [chosenDt]
   otherResns <- getRes pi pts' dts'
@@ -494,17 +496,17 @@ getBidChoice :: Bool -> Board -> PlayerNum -> Maybe (Sun, PlayerNum) -> IO (Mayb
 getBidChoice isMandatory b pi currBid = do
      let possibleBids = map sunValue $ filter ( > maybe (Sun 0) fst currBid) $ faceUpSuns $ handOf pi b
      let passStr = if isMandatory then ".  You must bid as you called Ra: " else " or hit return to pass: "
-     putStrLn $ show pi ++ ": Enter bid: " ++ show possibleBids ++ passStr
+     playMsg pi $ "Enter bid: " ++ show possibleBids ++ passStr
      l <- getLine
      case l of
        ""    -> if isMandatory 
-                then putStrLn "You must bid" >> getBidChoice isMandatory b pi currBid 
+                then playMsg pi "You must bid" >> getBidChoice isMandatory b pi currBid 
                 else return Nothing
        other -> case readInt l of
          Just i -> if i `elem` possibleBids
                      then return $ Just (Sun i, pi)
-                     else putStrLn "You don't have that sun!" >> getBidChoice isMandatory b pi currBid
-         _      -> putStrLn "What?" >> getBidChoice isMandatory b pi currBid
+                     else playMsg pi "You don't have that sun!" >> getBidChoice isMandatory b pi currBid
+         _      -> playMsg pi "What?" >> getBidChoice isMandatory b pi currBid
 
 findBestBid :: Bool -> Board -> [PlayerNum] -> Maybe (Sun, PlayerNum)  -> IO (Maybe (Sun, PlayerNum))
 findBestBid _ b [] topBid = return topBid
@@ -520,7 +522,7 @@ findBestBid lastMustBid b (pi:pis) topBid = do
            let newBid = if isJust bc then bc else topBid
            findBestBid lastMustBid b pis newBid
      else do 
-       putStrLn $ "You cannot bid (better than " ++ show topBid ++ ")"
+       playMsg pi $ "You cannot bid (better than " ++ show topBid ++ ")"
        findBestBid lastMustBid b pis topBid
 
 canBidHigherThan :: (PlayerNum, Board) -> Sun -> Bool
@@ -636,18 +638,18 @@ useGod pi b = do
            "Pick a tile from block to take with your god"
    -- TODO: allow multiple useGod, if player has multiple gods
    -- TODO: if done here, ensure there are still goddable tiles.
-   putStrLn ("Took (with God tile): " ++ show tile) 
+   playMsg pi $ "You took (with God tile): " ++ show tile
    disResns <- getDisasterResolutions pi [tile] b
    return $ exchangeGod pi tile disResns b
 
 pickOneFromMenu :: (Eq a) => (a -> String) -> PlayerNum -> [a] -> String -> IO a
 pickOneFromMenu shw pi items prompt = do
-  putStrLn prompt
-  putStrLn $ unwords $ map (\(n, i) -> show n ++ ":"++ shw i) (mappingFor items)
+  playMsg pi prompt
+  playMsg pi $ unwords $ map (\(n, i) -> show n ++ ":"++ shw i) (mappingFor items)
   l <- getLine
   case readInt l >>= itemIfValid of
-    Just x -> putStrLn ("You chose " ++ shw x) >> return x
-    Nothing -> putStrLn ("Invalid choice") >> pickOneFromMenu shw pi items prompt
+    Just x -> playMsg pi ("You chose " ++ shw x) >> return x
+    Nothing -> playMsg pi ("Invalid choice") >> pickOneFromMenu shw pi items prompt
     where 
       itemIfValid n = fmap snd $ find ((==n) . fst) (mappingFor items)
 
@@ -665,27 +667,27 @@ loop board = do
       pi = currentPlayerId board
   if not $ isStillInPlay pi board 
   then do
-       putStrLn "Skipping player - no suns left"
+       playMsg pi $ "You are being skipped - you have no face-up suns."
        loop (advancePlayer board)
   else do
-     putStrLn $ show pi ++ ": " ++ keyPrompt
+     playMsg pi keyPrompt
      putStrLn $ boardToString board
      l <- getLine
      case l of
        ""    -> if blockFull board
                 then
-                  putStrLn "Block is full - you must call Ra or use a God Tile" >> loop board
+                  playMsg pi "Block is full - you must call Ra or use a God Tile" >> loop board
                 else
-                  putStrLn "return - Drawing a tile" >> drawTile board >>= loop
+                  playMsg pi "return - Drawing a tile" >> drawTile board >>= loop
 
-       "q"   -> putStrLn "q - quitting"
+       "q"   -> playMsg pi "q - quitting"
 
        "g"   -> do
-         putStrLn "g - god"
+         playMsg pi "g - god"
          if currentPlayerCanUseGod board
          then useGodMany1Times pi board >>= loop . advancePlayer
          else do
-           putStrLn "You have no God tiles to use or there are no tiles to take!"
+           playMsg pi "You have no God tiles to use or there are no tiles to take!"
            loop board
 
        "s" -> do
