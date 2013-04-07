@@ -544,7 +544,11 @@ removeFromTilesOf pi ts b = b { players = M.adjust (modTiles (\\ ts)) pi (player
 -- wins an auction, resolving given disasters with the given discards
 winAuction ::  PlayerNum -> [Tile] -> [DisasterResolution] -> Board -> Sun -> Board
 winAuction pi ts disasterResolutions b winningSun = 
-  exchangeSun pi winningSun $ resolveDisasters pi disasterResolutions $ wipeBlock $ addToTilesOf pi nonDisasterTiles b
+  exchangeSun pi winningSun .
+  resolveDisasters pi disasterResolutions .
+  wipeBlock .
+  addToTilesOf pi nonDisasterTiles $ b
+
     where  wipeBlock b = b { block = []} 
            nonDisasterTiles = ts \\ disasterTiles
            disasterTiles    = [t | t@(Disaster _) <- ts]
