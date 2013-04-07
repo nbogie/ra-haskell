@@ -384,8 +384,8 @@ incRaCount ( b@Board{ raCount = rc }) = b { raCount = rc + 1 }
 deckEmpty ::  Board -> Bool
 deckEmpty = null . deck
 
-drawTile :: Board -> (AuctionReason -> Board -> IO Board) -> (Board -> IO Board) -> IO Board
-drawTile board auctionFn normalFn =
+drawTile :: Board -> IO Board
+drawTile board =
   if deckEmpty board 
   then do
     print "END - no more tiles"
@@ -404,23 +404,17 @@ drawTile board auctionFn normalFn =
              (False, b) -> return b
          else
            -- note: run the auction, first, then advance the player, then cede control finally
-           fmap advancePlayer $ auctionFn RaDrawn newBoard
+           runAuction RaDrawn newBoard >>= return . advancePlayer
       next -> do
          let newBlock = next : block board
          let newBoard = board { deck = rest, block = newBlock } 
-         fmap advancePlayer $ normalFn newBoard
+         putStrLn $ boardToString newBoard 
+         return $ advancePlayer newBoard
 
 testDataMonumentScoring ::  (Integer, [MonumentType])
 testDataMonumentScoring =  (19, replicate 4 Pyramid ++ replicate 3 Temple ++ replicate 2 Fortress ++ [Sphinx])
 
 data AuctionReason = BlockFull | RaDrawn | RaCalled deriving (Eq, Show)
-
-nf :: Board -> IO Board
-nf b = do
-  putStrLn "A normal tile draw"
-  putStrLn $  boardToString b
-  return b
-
 
 readInt :: String -> Maybe Int
 readInt str = case reads str of
@@ -475,8 +469,8 @@ relatedToDisaster Funeral = [Pharaoh]
 relatedToDisaster Unrest = map Civilization [minBound .. maxBound]
 relatedToDisaster Earthquake = map Monument [minBound .. maxBound]
 
-af :: AuctionReason -> Board -> IO Board
-af reason b = do
+runAuction :: AuctionReason -> Board -> IO Board
+runAuction reason b = do
   putStrLn $ "An auction!  Reason: " ++ show reason
   putStrLn $ boardToString b
   bestBid  <- findBestBid (reason == RaCalled) b (playersForAuction b) Nothing
@@ -673,7 +667,7 @@ loop board = do
                 then
                   putStrLn "Block is full - you must call Ra or use a God Tile" >> loop board
                   else
-                  putStrLn "return - Drawing a tile" >> drawTile board af nf >>= loop
+                  putStrLn "return - Drawing a tile" >> drawTile board >>= loop
        "q"   -> putStrLn "q - quitting"
        "g"   -> do
          putStrLn "g - god"
@@ -691,7 +685,7 @@ loop board = do
        "r"   -> do
          putStrLn "r - calling Ra"
          let reason = if blockFull board then BlockFull else RaCalled
-         fmap advancePlayer (af reason board) >>= loop
+         runAuction reason board >>= loop . advancePlayer
        other -> putStrLn ("You entered nonsense: " ++ show other) >> loop board
      else do
        putStrLn "Skipping player - no suns left"
