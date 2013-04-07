@@ -5,5 +5,10 @@ Why not
 [t | isStoreable t]
 
 -------------------------------------------------
+Found
+not . null . filter isFoo
+Why not
+any isFoo
+
 -------------------------------------------------
 
