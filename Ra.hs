@@ -584,34 +584,15 @@ exchangeGod pi t disResns b =
    removeFromBlock ts b = b { block = block b \\ ts }
    gainableTile = [t | isStoreable t]
 
--- todo: this should be local to useGodOrCancel
-tilesOnBlockMapping :: Block -> [(Int, Tile)]
-tilesOnBlockMapping bl = zip  [0..] (filter isGoddable bl)
-
-mappingFor :: [a] -> [(Int, a)]
-mappingFor items = zip [0..] items
-
-useGodOrCancel :: PlayerNum -> Board -> IO Board
-useGodOrCancel pi b = do
-  putStrLn "Pick a tile from block to take with your god, or c to cancel"
-  putStrLn $ "Tiles on Block: " ++ show (tilesOnBlockMapping (block b))
-  l <- getLine
-  if l == "c"  -- cancel
-  then 
-    return b
-  else do
-     case readInt l >>= validOnBlock of
-       -- TODO: allow multiple useGodOrCancels, if player has multiple gods
-       -- TODO: if done here, ensure there are still goddable tiles.
-       Just tile -> do
-         putStrLn ("Taking (with God tile): " ++ show tile) 
-         disResns <- getDisasterResolutions pi [tile] b
-         return (advancePlayer (exchangeGod pi tile disResns b))
-
-       Nothing -> useGodOrCancel pi b 
-       where validOnBlock :: Int -> Maybe Tile
-             validOnBlock n =  fmap snd $ find ((==n) . fst) mapping
-             mapping = tilesOnBlockMapping $ block b
+useGod :: PlayerNum -> Board -> IO Board
+useGod pi b = do
+   tile <- pickOneFromMenu show pi (filter isGoddable (block b))  
+           "Pick a tile from block to take with your god"
+   -- TODO: allow multiple useGod, if player has multiple gods
+   -- TODO: if done here, ensure there are still goddable tiles.
+   putStrLn ("Took (with God tile): " ++ show tile) 
+   disResns <- getDisasterResolutions pi [tile] b
+   return (advancePlayer (exchangeGod pi tile disResns b))
 
 pickOneFromMenu :: (Eq a) => (a -> String) -> PlayerNum -> [a] -> String -> IO a
 pickOneFromMenu shw pi items prompt = do
@@ -623,6 +604,9 @@ pickOneFromMenu shw pi items prompt = do
     Nothing -> putStrLn ("Invalid choice") >> pickOneFromMenu shw pi items prompt
     where 
       itemIfValid n = fmap snd $ find ((==n) . fst) (mappingFor items)
+
+mappingFor :: [a] -> [(Int, a)]
+mappingFor items = zip [0..] items
 
 currentPlayerCanUseGod board = playerHasGodTile && blockHasGoddableTiles
   where
@@ -648,7 +632,7 @@ loop board = do
        "g"   -> do
          putStrLn "g - god"
          if currentPlayerCanUseGod board
-         then useGodOrCancel pi board >>= loop
+         then useGod pi board >>= loop
          else putStrLn "You have no God tiles to use or there are no tiles to take!  Choose again." >> loop board
        "s" -> do
          putStrLn "s - computing score as though at epoch end"
