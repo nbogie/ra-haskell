@@ -9,9 +9,17 @@ import System.Environment(getArgs)
 import Control.Arrow ((&&&))
 import Control.Monad (forM)
 import qualified Data.Map as M
+
+import Control.Monad
+import Control.Monad.Error
+import Control.Monad.State
+
 class (Show a) => ToChar a where
 
   toChar :: a -> Char
+
+  toCharStr :: a -> String
+  toCharStr =(:"") .  toChar 
 
   -- freebies
   toCharAndShow :: a -> String
@@ -221,12 +229,13 @@ data Player = Player { suns :: ([Sun], [Sun])
                      , score :: Int
                      } deriving (Show, Eq)
 
+type PlayerMap = M.Map PlayerNum Player
 data Board = Board { raCount :: Int
                    , block :: Block
                    , boardSun :: Sun
                    , epoch :: Epoch
                    , deck :: Deck
-                   , players :: M.Map PlayerNum Player
+                   , players :: PlayerMap
                    , currentPlayerId :: Int
                    } deriving (Show, Eq)
 
@@ -533,13 +542,38 @@ modSuns :: (SunsUpDown -> SunsUpDown) -> Player -> Player
 modSuns f p = p { suns = f (suns p) } 
 modTiles :: ([Tile] -> [Tile]) -> Player -> Player
 modTiles f p = p { tiles = f (tiles p) }
+modPlayersM :: (PlayerMap -> PlayerMap) -> Play()
+modPlayersM fn = modify (\b -> b { players = fn (players b)})
 
 addToTilesOf :: PlayerNum -> [Tile] -> Board -> Board
 addToTilesOf pi ts b = b { players = M.adjust (modTiles (++ storeables)) pi (players b) }
   where storeables = filter isStoreable ts
 
+addToTilesOfM :: PlayerNum -> [Tile] -> Play ()
+addToTilesOfM pi ts = do
+  modPlayersM $ M.adjust (modTiles (++ storeables)) pi
+  where storeables = filter isStoreable ts
+
+removeFromTilesOfM :: PlayerNum -> [Tile] -> Play ()
+removeFromTilesOfM pi ts  = modPlayersM $ M.adjust (modTiles (\\ ts)) pi
+
 removeFromTilesOf :: PlayerNum -> [Tile] -> Board -> Board
 removeFromTilesOf pi ts b = b { players = M.adjust (modTiles (\\ ts)) pi (players b) }
+
+type Play a = StateT Board (Either String) a
+
+wipeBlockM = modify (\b -> b { block = []} )
+
+winAuctionM :: PlayerNum -> [Tile] -> [DisasterResolution] -> Sun -> Play ()
+winAuctionM pi ts disasterResolutions winningSun = 
+   let
+        nonDisasterTiles = ts \\ disasterTiles
+        disasterTiles    = [t | t@(Disaster _) <- ts]
+   in do 
+         addToTilesOfM pi nonDisasterTiles
+         wipeBlockM
+         resolveDisastersM pi disasterResolutions
+         exchangeSunM pi winningSun
 
 -- wins an auction, resolving given disasters with the given discards
 winAuction ::  PlayerNum -> [Tile] -> [DisasterResolution] -> Board -> Sun -> Board
@@ -552,6 +586,12 @@ winAuction pi ts disasterResolutions b winningSun =
     where  wipeBlock b = b { block = []} 
            nonDisasterTiles = ts \\ disasterTiles
            disasterTiles    = [t | t@(Disaster _) <- ts]
+
+resolveDisastersM :: PlayerNum -> [DisasterResolution] -> Play ()
+resolveDisastersM pi rs = foldM resolveDisasterM () rs
+ where 
+  resolveDisasterM :: () -> DisasterResolution -> Play ()
+  resolveDisasterM _acc (disasterType, discards) = removeFromTilesOfM pi discards
 
 -- shared between winAuction and exchangeGod
 resolveDisasters :: PlayerNum -> [DisasterResolution] -> Board -> Board
@@ -568,6 +608,12 @@ turnSunsFaceUpFor pi s b = b { players = M.adjust (modSuns turnSunsFaceUp) pi (p
 turnSunsFaceUp :: SunsUpDown -> SunsUpDown
 turnSunsFaceUp (ups, downs) = (ups ++ downs, [])
 
+exchangeSunM:: PlayerNum -> Sun -> Play ()
+exchangeSunM pi toBoard = do
+  bsun <- gets boardSun
+  let f (ups, downs) = (ups \\ [toBoard], bsun:downs)
+  modPlayersM $M.adjust (modSuns f) pi
+  modify (\b -> b { boardSun = toBoard } )
 
 exchangeSun:: PlayerNum -> Sun -> Board -> Board
 exchangeSun pi toBoard b = 
