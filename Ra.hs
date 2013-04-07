@@ -610,9 +610,12 @@ currentPlayerCanUseGod board = playerHasGodTile && blockHasGoddableTiles
 loop ::  Board -> IO ()
 loop board = do
   let keyPrompt = "Enter return (draw tile), g(use god), r(call Ra), or q(quit)."
-  let pi = currentPlayerId board
-  let mayDraw = blockFull board
-  if isStillInPlay pi board then do
+      pi = currentPlayerId board
+  if not $ isStillInPlay pi board 
+  then do
+       putStrLn "Skipping player - no suns left"
+       loop (advancePlayer board)
+  else do
      putStrLn $ show pi ++ ": " ++ keyPrompt
      putStrLn $ boardToString board
      l <- getLine
@@ -620,30 +623,32 @@ loop board = do
        ""    -> if blockFull board
                 then
                   putStrLn "Block is full - you must call Ra or use a God Tile" >> loop board
-                  else
+                else
                   putStrLn "return - Drawing a tile" >> drawTile board >>= loop
+
        "q"   -> putStrLn "q - quitting"
+
        "g"   -> do
          putStrLn "g - god"
          if currentPlayerCanUseGod board
-         then
-           useGodMany1Times pi board >>= loop . advancePlayer
+         then useGodMany1Times pi board >>= loop . advancePlayer
          else do
            putStrLn "You have no God tiles to use or there are no tiles to take!"
            loop board
+
        "s" -> do
          putStrLn "s - computing score as though at epoch end"
          let scoredBoard = scoreEpoch board
          putStrLn (boardToString scoredBoard) 
          loop board
+
        "r"   -> do
          putStrLn "r - calling Ra"
          let reason = if blockFull board then BlockFull else RaCalled
          runAuction reason board >>= loop . advancePlayer
+         -- TODO: deal with case where the last sun was just used, so no one in play
+       
        other -> putStrLn ("You entered nonsense: " ++ show other) >> loop board
-     else do
-       putStrLn "Skipping player - no suns left"
-       loop (advancePlayer board)
 
 useGodMany1Times::  PlayerNum -> Board -> IO Board
 useGodMany1Times pi board = do
