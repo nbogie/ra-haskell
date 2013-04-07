@@ -443,14 +443,17 @@ getRes pi pts dts = do
   return $ (chosenDt, discards) : otherResns
 
 pickDiscardsForDisaster ::  PlayerNum -> [Tile] -> DisasterType -> IO [Tile]
-pickDiscardsForDisaster pi ts dis = return $ pickDis dis
+pickDiscardsForDisaster pi ts dis = pickDis dis
   where 
   relevant= filter (`elem` relatedToDisaster dis) ts
-  pickDis Funeral = take 2 relevant
-  pickDis Drought = take 2 $ allz Flood ++ allz Nile
+  pickDis Funeral = return $ take 2 relevant
+  pickDis Drought = return $ take 2 $ allz Flood ++ allz Nile
             where allz t = filter (==t) relevant
-  -- TODO: let the user choose discards for unrest and quake
-  pickDis _ = take 2 relevant 
+  pickDis _ | length relevant <= 2 = return $ take 2 relevant -- no choice
+            | otherwise            = do  -- guaranteed at least two choices
+    d1 <- pickOneFromMenu pi (sort relevant)           "Pick first discard"
+    d2 <- pickOneFromMenu pi (sort (relevant \\ [d1])) "Pick second discard"
+    return [d1,d2]
 
 relatedToDisaster :: DisasterType -> [Tile]
 relatedToDisaster Drought = [Flood, Nile]
