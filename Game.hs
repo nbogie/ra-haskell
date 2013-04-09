@@ -1,14 +1,14 @@
-module Main where
+module Game where
 import Shuffle
 import Data.List (nub, sort, group, (\\), find, foldl')
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import Debug.Trace (traceShow)
 import Test.HUnit
-import System.Environment(getArgs)
 
 import Control.Arrow ((&&&))
 import Control.Monad (forM)
 import qualified Data.Map as M
+
 class (Show a) => ToChar a where
 
   toChar :: a -> Char
@@ -360,47 +360,12 @@ initDeck = shuffle
 raTrackFull :: Board -> Bool
 raTrackFull = (>=8) . raCount
 
-main ::  IO ()
-main = do
-  args <- getArgs
-  let tiles = case args of
-                ["-d"] -> allTilesTweaked
-                _      -> allTiles
-  _counts <- tests
-  fmap initBoard (initDeck tiles) >>= loop 
-
 incRaCount :: Board -> Board
 incRaCount ( b@Board{ raCount = rc }) = b { raCount = rc + 1 }
 
 deckEmpty ::  Board -> Bool
 deckEmpty = null . deck
 
-drawTile :: Board -> IO Board
-drawTile board =
-  if deckEmpty board 
-  then do
-    print "END - no more tiles"
-    return board
-  else do
-    let (tile:rest) = deck board
-    putStrLn $ "Tile drawn: " ++ show tile
-    case tile of
-      Ra -> do
-         let newBoard = incRaCount $ board { deck = rest }
-         if raTrackFull newBoard
-         then do
-           print "Ra Track Full - Immediate End Of Epoch"
-           case (endEpoch . advancePlayer ) newBoard of
-             (True, b)  -> print "LAST EPOCH.  GAME OVER AFTER FINAL SCORING" >> return b
-             (False, b) -> return b
-         else
-           -- note: run the auction, first, then advance the player, then cede control finally
-           runAuction RaDrawn newBoard >>= return . advancePlayer
-      next -> do
-         let newBlock = next : block board
-         let newBoard = board { deck = rest, block = newBlock } 
-         putStrLn $ boardToString newBoard 
-         return $ advancePlayer newBoard
 
 testDataMonumentScoring ::  (Integer, [MonumentType])
 testDataMonumentScoring =  (19, replicate 4 Pyramid ++ replicate 3 Temple ++ replicate 2 Fortress ++ [Sphinx])
@@ -420,41 +385,7 @@ isStillInPlay pi b = not $ null $ faceUpSuns $ handOf pi b
 handOf :: PlayerNum -> Board -> Player
 handOf pi b = players b M.! pi
 
-getDisasterResolutions:: PlayerNum -> [Tile] -> Board -> IO [DisasterResolution]
-getDisasterResolutions pi gainedTiles b = do
-  let disasterTiles    = [t | t@(Disaster _) <- gainedTiles]
-      disasterTypes    = [dtyp | Disaster dtyp <- disasterTiles]
-      nonDisasterTiles = gainedTiles \\ disasterTiles
-      playerTiles      = tiles $ handOf pi b
-      candidates       = playerTiles ++ nonDisasterTiles
-  getRes pi candidates disasterTypes
 
-playMsg :: PlayerNum -> String -> IO ()
-playMsg pi msg = putStrLn $ "Player " ++ show pi ++ " >> " ++ msg
-
-getRes :: PlayerNum -> [Tile] -> [DisasterType] -> IO [DisasterResolution]
-getRes pi pts [] = return []
-getRes pi pts dts = do
-  chosenDt <- pickOneFromMenu toCharAndShow pi dts "Pick a disaster to resolve: "
-  discards <- pickDiscardsForDisaster pi pts chosenDt
-  playMsg pi $ "Discarded "++show discards
-  let pts' = pts \\ discards
-  let dts' = dts \\ [chosenDt]
-  otherResns <- getRes pi pts' dts'
-  return $ (chosenDt, discards) : otherResns
-
-pickDiscardsForDisaster ::  PlayerNum -> [Tile] -> DisasterType -> IO [Tile]
-pickDiscardsForDisaster pi ts dis = pickDis dis
-  where 
-  relevant= filter (`elem` relatedToDisaster dis) ts
-  pickDis Funeral = return $ take 2 relevant
-  pickDis Drought = return $ take 2 $ allz Flood ++ allz Nile
-            where allz t = filter (==t) relevant
-  pickDis _ | length relevant <= 2 = return $ take 2 relevant -- no choice
-            | otherwise            = do  -- guaranteed at least two choices
-    d1 <- pickOneFromMenu toCharAndShow pi (sort relevant)           "Pick first discard"
-    d2 <- pickOneFromMenu toCharAndShow pi (sort (relevant \\ [d1])) "Pick second discard"
-    return [d1,d2]
 
 relatedToDisaster :: DisasterType -> [Tile]
 relatedToDisaster Drought = [Flood, Nile]
@@ -462,53 +393,6 @@ relatedToDisaster Funeral = [Pharaoh]
 relatedToDisaster Unrest = map Civilization [minBound .. maxBound]
 relatedToDisaster Earthquake = map Monument [minBound .. maxBound]
 
-runAuction :: AuctionReason -> Board -> IO Board
-runAuction reason b = do
-  putStrLn $ "An auction!  Reason: " ++ show reason
-  putStrLn $ boardToString b
-  bestBid  <- findBestBid (reason == RaCalled) b (playersForAuction b) Nothing
-  disResns <- case bestBid of
-                   Just (sun, winner) -> getDisasterResolutions winner (block b) b
-                   Nothing            -> return []
-  let (newBoard, winr) = case bestBid of
-                            Just (sun, winner) -> (winAuction winner (block b) disResns  b sun, Just winner)
-                            Nothing            -> (b , Nothing)
-  let winnerIdStr = maybe "All Passed" (("Auction won by player " ++) . show) winr
-  putStrLn winnerIdStr
-  return $ newBoard { block = if reason == BlockFull then [] else block newBoard }
-
-getBidChoice :: Bool -> Board -> PlayerNum -> Maybe (Sun, PlayerNum) -> IO (Maybe (Sun, PlayerNum))
-getBidChoice isMandatory b pi currBid = do
-     let possibleBids = map sunValue $ filter ( > maybe (Sun 0) fst currBid) $ faceUpSuns $ handOf pi b
-     let passStr = if isMandatory then ".  You must bid as you called Ra: " else " or hit return to pass: "
-     playMsg pi $ "Enter bid: " ++ show possibleBids ++ passStr
-     l <- getLine
-     case l of
-       ""    -> if isMandatory 
-                then playMsg pi "You must bid" >> getBidChoice isMandatory b pi currBid 
-                else return Nothing
-       other -> case readInt l of
-         Just i -> if i `elem` possibleBids
-                     then return $ Just (Sun i, pi)
-                     else playMsg pi "You don't have that sun!" >> getBidChoice isMandatory b pi currBid
-         _      -> playMsg pi "What?" >> getBidChoice isMandatory b pi currBid
-
-findBestBid :: Bool -> Board -> [PlayerNum] -> Maybe (Sun, PlayerNum)  -> IO (Maybe (Sun, PlayerNum))
-findBestBid _ b [] topBid = return topBid
-findBestBid lastMustBid b (pi:pis) topBid = do
-     let isLast = null pis 
-     if isStillInPlay pi b && maybe True (((pi,b) `canBidHigherThan`) . fst) topBid
-     then
-        if isLast && isNothing topBid && lastMustBid
-        then
-           getBidChoice True b pi topBid
-        else do
-           bc <- getBidChoice False b pi topBid
-           let newBid = if isJust bc then bc else topBid
-           findBestBid lastMustBid b pis newBid
-     else do 
-       playMsg pi $ "You cannot bid (better than " ++ show topBid ++ ")"
-       findBestBid lastMustBid b pis topBid
 
 canBidHigherThan :: (PlayerNum, Board) -> Sun -> Bool
 canBidHigherThan (pi, board) bid = 
@@ -580,90 +464,13 @@ exchangeGod pi t disResns b =
    removeFromBlock ts b = b { block = block b \\ ts }
    gainableTile = [t | isStoreable t]
 
-useGod :: PlayerNum -> Board -> IO Board
-useGod pi b = do
-   tile <- pickOneFromMenu show pi (filter isGoddable (block b))  
-           "Pick a tile from block to take with your god"
-   -- TODO: allow multiple useGod, if player has multiple gods
-   -- TODO: if done here, ensure there are still goddable tiles.
-   playMsg pi $ "You took (with God tile): " ++ show tile
-   disResns <- getDisasterResolutions pi [tile] b
-   return $ exchangeGod pi tile disResns b
 
-pickOneFromMenu :: (Eq a) => (a -> String) -> PlayerNum -> [a] -> String -> IO a
-pickOneFromMenu shw pi items prompt = do
-  playMsg pi prompt
-  playMsg pi $ unwords $ map (\(n, i) -> show n ++ ":"++ shw i) (mappingFor items)
-  l <- getLine
-  case readInt l >>= itemIfValid of
-    Just x -> playMsg pi ("You chose " ++ shw x) >> return x
-    Nothing -> playMsg pi ("Invalid choice") >> pickOneFromMenu shw pi items prompt
-    where 
-      itemIfValid n = fmap snd $ find ((==n) . fst) (mappingFor items)
-
-mappingFor :: [a] -> [(Int, a)]
-mappingFor items = zip [0..] items
-
+currentPlayerCanUseGod ::  Board -> Bool
 currentPlayerCanUseGod board = playerHasGodTile && blockHasGoddableTiles
   where
      playerHasGodTile      = elem God . tiles . active $ board
      blockHasGoddableTiles = any isGoddable . block $ board
 
-loop ::  Board -> IO ()
-loop board = do
-  let keyPrompt = "Enter return (draw tile), g(use god), r(call Ra), or q(quit)."
-      pi = currentPlayerId board
-  if not $ isStillInPlay pi board 
-  then do
-       playMsg pi $ "You are being skipped - you have no face-up suns."
-       loop (advancePlayer board)
-  else do
-     playMsg pi keyPrompt
-     putStrLn $ boardToString board
-     l <- getLine
-     case l of
-       ""    -> if blockFull board
-                then
-                  playMsg pi "Block is full - you must call Ra or use a God Tile" >> loop board
-                else
-                  playMsg pi "return - Drawing a tile" >> drawTile board >>= loop
-
-       "q"   -> playMsg pi "q - quitting"
-
-       "g"   -> do
-         playMsg pi "g - god"
-         if currentPlayerCanUseGod board
-         then useGodMany1Times pi board >>= loop . advancePlayer
-         else do
-           playMsg pi "You have no God tiles to use or there are no tiles to take!"
-           loop board
-
-       "s" -> do
-         putStrLn "s - computing score as though at epoch end"
-         let scoredBoard = scoreEpoch board
-         putStrLn (boardToString scoredBoard) 
-         loop board
-
-       "r"   -> do
-         putStrLn "r - calling Ra"
-         let reason = if blockFull board then BlockFull else RaCalled
-         runAuction reason board >>= loop . advancePlayer
-         -- TODO: deal with case where the last sun was just used, so no one in play
-       
-       other -> putStrLn ("You entered nonsense: " ++ show other) >> loop board
-
-useGodMany1Times::  PlayerNum -> Board -> IO Board
-useGodMany1Times pi board = do
-   b <- useGod pi board
-   if currentPlayerCanUseGod b
-   then do
-      continueChoice <- pickOneFromMenu show pi [UseAnotherGod, FinishTurn] "Use another god?"
-      if continueChoice == UseAnotherGod 
-      then useGodMany1Times pi b
-      else return b
-   else return b
-
-data ContinueChoice = UseAnotherGod | FinishTurn deriving (Show, Eq)
 
 
 
