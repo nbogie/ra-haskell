@@ -2,7 +2,7 @@ module Game where
 import Prelude hiding (pi)
 import Data.List (nub, sort, group, (\\), foldl')
 -- import Data.Maybe (fromMaybe, isJust, isNothing)
-import Debug.Trace (traceShow)
+import Debug.Trace (traceShow, trace)
 import Test.HUnit
 
 import Control.Arrow ((&&&))
@@ -303,12 +303,12 @@ totalSunCount :: SunsUpDown -> Int
 totalSunCount = sum . map sunValue . fst . turnSunsFaceUp
 
 data ScoreReason = ScGods Int
-                 | ScPharaohs Int ComparativeScoreReason
-                 | ScNiles Int Bool
+                 | ScPharaohs Int (Int, ComparativeScoreReason)
+                 | ScNiles Int (Int,Int)
                  | ScCivs Int Int
                  | ScGolds Int
                  | ScMonuments Int Int
-                 | ScSuns Int ComparativeScoreReason
+                 | ScSuns Int (Int, ComparativeScoreReason)
                  deriving (Show, Eq)
 
 scoreFrom :: ScoreReason -> Int
@@ -318,8 +318,36 @@ scoreFrom r = case r of
   ScNiles i _       -> i
   ScCivs i _        -> i
   ScGolds i         -> i
-  ScMonuments x y -> x + y
+  ScMonuments x y   -> x + y
   ScSuns i _        -> i
+
+explainScore :: ScoreReason -> String
+explainScore r = case r of
+  ScGods i                  -> sayPoints i ++ " for God tiles (2 points per God Tile)"
+  ScGolds i                 -> sayPoints i ++ " for Golds (3 points per Gold)."
+  ScPharaohs i (n,Max)      -> sayPoints i ++ " for having the highest number of Pharaohs " ++ paren (show n)
+  ScPharaohs i (n,Min)      -> sayPoints i ++ " for having the least number of Pharaohs " ++ paren (show n)
+  ScPharaohs i (n,AllEqual) -> sayPoints i ++ " as everyone had the same number of Pharaohs " ++ paren (show n)
+  ScPharaohs i (n,Neutral)  -> sayPoints i ++ " for having neither the highest nor lowest number of Pharaohs " ++ paren (show n)
+  ScSuns i (n,Max)          -> sayPoints i ++ " for having the highest total Sun points " ++ paren (show n)
+  ScSuns i (n,Min)          -> sayPoints i ++ " for having the lowest total Sun points " ++ paren (show n)
+  ScSuns i (n,Neutral)      -> sayPoints i ++ " for having neither highest nor lowest total Sun points " ++ paren (show n)
+  ScSuns i (n,AllEqual)     -> sayPoints i ++ " as everyone had the same total Sun points " ++ paren (show n)
+  ScNiles i (nnile, nflood) -> sayPoints i ++ " for "++ show nnile ++" Nile and "++ show nflood ++" Flood tiles."
+                               ++ if nflood == 0 && nnile > 0 
+                                  then "  (You needed at least one Flood tile to score points.)"
+                                  else ""
+  ScCivs i nDistinct        -> sayPoints i ++ " for " ++ show nDistinct ++ " distinct civilization tiles."
+                               ++ if nDistinct < 3 then "  (You need at least 3 distinct to score points.)" else ""
+  ScMonuments x y           -> sayPoints (scoreFrom r) ++ " total from Monuments "
+                               ++ paren ( sayPoints x ++ " for distinct types, and " 
+                                  ++ sayPoints y ++ " for duplicates.")
+
+paren str = "(" ++ str ++ ")"
+
+sayPoints :: Int -> String
+sayPoints 1 = show 1 ++ " point"
+sayPoints n = show n ++ " points"
 
 -- did you get points because you had the most of something?  the least?  everyone had the same?
 data ComparativeScoreReason = Min | Max | AllEqual | Neutral deriving (Show, Eq)
@@ -328,30 +356,31 @@ scoreEpochForPlayer :: Bool -> [Int] -> [Int] -> Player -> Player
 scoreEpochForPlayer isFinal pharCounts sunTotals p = p { score = max 0 (score p + total) }
   where 
      total :: Int
-     total = sum $ map scoreFrom $ traceShow componentScores componentScores
-     componentScores = [ScGods (2*num God)
+     total = sum $ map scoreFrom $ trace (unlines $ map explainScore componentScores) componentScores
+     componentScores = [ godScore
                        , pharaohScore
                        , nileScore
                        , civScore
-                       , ScGolds (3*num Gold)] 
+                       , goldScore
+                       ]
                        ++ (if isFinal then [monumentScore, sunScore] else [])
-     
-     pharaohScore | length (nub pharCounts) < 2       = ScPharaohs 0    AllEqual
-                  | num Pharaoh == minimum pharCounts = ScPharaohs (-2) Min
-                  | num Pharaoh == maximum pharCounts = ScPharaohs 5    Max
-                  | otherwise                         = ScPharaohs 0    Neutral
-     sunScore     | length (nub sunTotals) < 2        = ScSuns     0    AllEqual
-                  | sunTotal == minimum sunTotals     = ScSuns     (-5) Min
-                  | sunTotal == maximum sunTotals     = ScSuns     5    Max
-                  | otherwise                         = ScSuns     0    Neutral
+
+     godScore  = ScGods  (2*num God)
+     goldScore = ScGolds (3*num Gold)
+     pharaohScore | length (nub pharCounts) < 2       = ScPharaohs 0    (num Pharaoh, AllEqual)
+                  | num Pharaoh == minimum pharCounts = ScPharaohs (-2) (num Pharaoh, Min)
+                  | num Pharaoh == maximum pharCounts = ScPharaohs 5    (num Pharaoh, Max)
+                  | otherwise                         = ScPharaohs 0    (num Pharaoh, Neutral)
+     sunScore     | length (nub sunTotals) < 2        = ScSuns     0    (sunTotal, AllEqual)
+                  | sunTotal == minimum sunTotals     = ScSuns     (-5) (sunTotal, Min)
+                  | sunTotal == maximum sunTotals     = ScSuns     5    (sunTotal, Max)
+                  | otherwise                         = ScSuns     0    (sunTotal, Neutral)
      sunTotal = totalSunCount (suns p)
      nileScore = if num Flood == 0 
-       then ScNiles 0 False 
-       else ScNiles (num Nile + num Flood) True
+       then ScNiles 0 (num Nile, num Flood)
+       else ScNiles (num Nile + num Flood) (num Nile, num Flood)
      civScore = ScCivs ([-5, 0, 0, 5, 10, 15] !! numCivTypes) numCivTypes
-       where
-         numCivTypes = length (nub civTypes)
-     civTypes = [t | Civilization t <- tiles p]
+     numCivTypes = length $ nub [t | Civilization t <- tiles p]
      monumentScore = scoreMonuments monumentTypes
      monumentTypes = [t | Monument t <- tiles p]
      -- so useful!
