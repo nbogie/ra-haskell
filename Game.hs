@@ -389,7 +389,7 @@ deckEmpty = null . deck
 testDataMonumentScoring ::  (Integer, [MonumentType])
 testDataMonumentScoring =  (19, replicate 4 Pyramid ++ replicate 3 Temple ++ replicate 2 Fortress ++ [Sphinx])
 
-data AuctionReason = BlockFull | RaDrawn | RaCalled deriving (Eq, Show)
+data AuctionReason = BlockFull | RaDrawn | RaCalledVoluntarily deriving (Eq, Show)
 
 readInt :: String -> Maybe Int
 readInt str = case reads str of

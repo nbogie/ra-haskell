@@ -94,7 +94,7 @@ runAuctionIO :: AuctionReason -> Board -> IO Board
 runAuctionIO reason b = do
   putStrLn $ "An auction!  Reason: " ++ show reason
   putStrLn $ boardToString b
-  bestBid  <- findBestBidIO (reason == RaCalled) b (playersForAuction b) Nothing
+  bestBid  <- findBestBidIO (reason == RaCalledVoluntarily) b (playersForAuction b) Nothing
   disResns <- case bestBid of
                    Just (_sun, winner) -> getDisasterResolutionsIO winner (block b) b
                    Nothing            -> return []
@@ -164,48 +164,61 @@ pickOneFromMenuIO shw pi items prompt = do
 
 
 
+data PlayChoice = ChoiceDraw | ChoiceCallRa | ChoiceQuit | ChoiceUseGod | ChoiceShowScores deriving (Show, Eq) 
+
+getChoice :: PlayerNum -> IO PlayChoice
+getChoice pi = do
+   playMsg pi "Enter return (draw tile), g(use god), r(call Ra), or q(quit)."
+   l <- getLine
+   case l of
+      ""    -> return ChoiceDraw
+      "g"   -> return ChoiceUseGod
+      "q"   -> return ChoiceQuit
+      "r"   -> return ChoiceCallRa
+      "s"   -> return ChoiceShowScores
+      other -> putStrLn ("You entered nonsense: " ++ show other) >> getChoice pi
+
 loopIO ::  Board -> IO ()
 loopIO board = do
-  let keyPrompt = "Enter return (draw tile), g(use god), r(call Ra), or q(quit)."
+  let 
       pi = currentPlayerId board
   if not $ isStillInPlay pi board 
   then do
        playMsg pi "You are being skipped - you have no face-up suns."
        loopIO (advancePlayer board)
   else do
-     playMsg pi keyPrompt
      putStrLn $ boardToString board
-     l <- getLine
-     case l of
-       ""    -> if blockFull board
-                then
-                  playMsg pi "Block is full - you must call Ra or use a God Tile" >> loopIO board
-                else
-                  playMsg pi "return - Drawing a tile" >> drawTileIO board >>= loopIO
+     choice <- getChoice pi
+     case choice of
+       ChoiceDraw -> do
+         playMsg pi "Choice: Draw a tile"
+         if blockFull board
+         then
+           playMsg pi "Block is full - you may only call Ra or use a God Tile" >> loopIO board
+         else
+           drawTileIO board >>= loopIO
 
-       "q"   -> playMsg pi "q - quitting"
+       ChoiceQuit -> playMsg pi "Choice: Quit"
 
-       "g"   -> do
-         playMsg pi "g - god"
+       ChoiceUseGod -> do
+         playMsg pi "Choice: Use God tile(s)."
          if currentPlayerCanUseGod board
          then useGodMany1TimesIO pi board >>= loopIO . advancePlayer
          else do
            playMsg pi "You have no God tiles to use or there are no tiles to take!"
            loopIO board
 
-       "s" -> do
-         putStrLn "s - computing score as though at epoch end"
-         let scoredBoard = scoreEpoch board
-         putStrLn (boardToString scoredBoard) 
+       ChoiceShowScores -> do
+         putStrLn "Choice: Compute score as though at epoch end."
+         putStrLn $ boardToString $ scoreEpoch board
          loopIO board
 
-       "r"   -> do
-         putStrLn "r - calling Ra"
-         let reason = if blockFull board then BlockFull else RaCalled
+       ChoiceCallRa -> do
+         putStrLn "Choice: Call Ra."
+         let reason = if blockFull board then BlockFull else RaCalledVoluntarily
          runAuctionIO reason board >>= loopIO . advancePlayer
          -- TODO: deal with case where the last sun was just used, so no one in play
        
-       other -> putStrLn ("You entered nonsense: " ++ show other) >> loopIO board
 
 useGodMany1TimesIO::  PlayerNum -> Board -> IO Board
 useGodMany1TimesIO pi board = do
