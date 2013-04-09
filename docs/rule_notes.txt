@@ -1,0 +1,7 @@
+Notes on the rules
+
+* note: it is valid to bid on an empty auction (you may wish to gain a better sun)
+
+* note: if a player has two monuments of a kind, one of them will not score.  Only the number of distinct monuments, and the bonuses for 3, 4, or 5 of the same, are scored.
+
+* note: with the correct tileset, you can not run out of tiles before end of 3rd Epoch.  If you tweak the tileset, ensure there are at least 30 Ra tiles.

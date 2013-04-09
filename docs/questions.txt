@@ -1,8 +1,0 @@
--- We want the deck to be list of type a, but a player hand to be list of some subclass b of those.  How best to structure this?
-
-data Tile = Storeable StoreableTile 
-          | NonStoreable NonstoreableTile
-
-data NonstoreableTile = Ra | Disaster
-data StoreableTile = Pharaoh | Gold
-

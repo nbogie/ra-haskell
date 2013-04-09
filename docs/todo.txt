@@ -1,9 +1,7 @@
-* improve types so that certain tiles are not holdable in a hand (disasters and Ra tiles).
-* multiple ui's - e.g. curses interface - will highlight game/ui boundary
-* note: it is valid to bid on an empty auction (you may wish to gain a better sun)
-* check what happens when we choose to god, but there is nothing pickable (only other god tiles, say).
+* support full number of players (2-5)
+* improve types so that certain tiles are not holdable in a hand (disasters and Ra tiles), enforced by the type system.  See docs/question_tiletypes.txt
+* multiple ui's - e.g. curses, gloss - will highlight game/ui boundary
 * leverage the typed scoring by providing a scoring breakdown in the UI, and maybe a hint mode telling you what the current block is immediately worth to you.
-* note: with the correct tileset, you should never run out of tiles before end of 3rd Epoch.  If you tweak the tileset, ensure there are at least 30 Ra tiles.
 
 DONE:
 * correct the design: when the block is full, an auction isn't automatically called - player may call ra, OR use god(s) if held. Remember this invocation of ra is classed involuntary.
