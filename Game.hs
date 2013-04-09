@@ -249,8 +249,12 @@ numPlayers :: Board -> Int
 numPlayers = length . M.keys . players
 
 startingSuns ::  [[[Sun]]]
-startingSuns = fmap (fmap (fmap Sun)) [ [[9,6,5,2], [8,7,4,3]]
-               , [[13,8,5,2], [12, 9, 6, 3], [11, 10, 7, 4]]]
+startingSuns = fmap (fmap (fmap Sun)) 
+               [ [[9,  6, 5, 2], [8, 7, 4, 3]] -- 2 players
+               , [[13, 8, 5, 2], [12, 9, 6, 3], [11, 10, 7, 4]] --3 players
+               , [[13, 6, 2], [12, 7, 3], [11, 8, 4], [10, 9, 5]] --4 players
+               , [[16, 7, 2], [15, 8, 3], [14, 9, 4], [13, 10, 5], [12, 11, 6]] -- 5 players
+               ]
 
 initPlayers :: Int -> [Player]
 initPlayers n = map (\ss -> Player (ss, []) [] 10) sunSets
