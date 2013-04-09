@@ -1,12 +1,10 @@
 module Game where
-import Prelude hiding (pi)
-import Data.List (nub, sort, group, (\\), foldl')
--- import Data.Maybe (fromMaybe, isJust, isNothing)
-import Debug.Trace (traceShow, trace)
-import Test.HUnit
 
 import Control.Arrow ((&&&))
--- import Control.Monad (forM)
+import Data.List (nub, sort, group, (\\), foldl')
+import Debug.Trace (trace)
+import Prelude hiding (pi)
+import Test.HUnit
 import qualified Data.Map as M
 
 import Shuffle
@@ -342,11 +340,10 @@ explainScore r = case r of
   ScMonuments x y           -> sayPoints (scoreFrom r) ++ " total from Monuments "
                                ++ paren ( sayPoints x ++ " for distinct types, and " 
                                   ++ sayPoints y ++ " for duplicates.")
-
-paren str = "(" ++ str ++ ")"
+  where paren str = "(" ++ str ++ ")"
 
 sayPoints :: Int -> String
-sayPoints 1 = show 1 ++ " point"
+sayPoints n@1 = show n ++ " point"
 sayPoints n = show n ++ " points"
 
 -- did you get points because you had the most of something?  the least?  everyone had the same?
