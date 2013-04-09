@@ -1,13 +1,15 @@
 module Game where
-import Shuffle
-import Data.List (nub, sort, group, (\\), find, foldl')
-import Data.Maybe (fromMaybe, isJust, isNothing)
+import Prelude hiding (pi)
+import Data.List (nub, sort, group, (\\), foldl')
+-- import Data.Maybe (fromMaybe, isJust, isNothing)
 import Debug.Trace (traceShow)
 import Test.HUnit
 
 import Control.Arrow ((&&&))
-import Control.Monad (forM)
+-- import Control.Monad (forM)
 import qualified Data.Map as M
+
+import Shuffle
 
 class (Show a) => ToChar a where
 
@@ -124,6 +126,7 @@ instance ToChar CivilizationType where
       Astronomy   -> '*'
       Writing     -> '&'
 
+allTiles :: [Tile]
 allTiles = replicate 30 Ra      ++ 
            replicate 8 God      ++ 
            replicate 25 Pharaoh ++ 
@@ -138,6 +141,7 @@ allTiles = replicate 30 Ra      ++
            replicate 2 earthquake
 
 -- a tweaked set for an event-heavy game during dev
+allTilesTweaked :: [Tile]
 allTilesTweaked = replicate 20 Ra ++ 
            replicate 30 God     ++ 
            replicate 25 Pharaoh ++ 
@@ -151,15 +155,23 @@ allTilesTweaked = replicate 20 Ra ++
            allMonuments         ++ 
            replicate 6 earthquake
 
+allMonumentTypes ::  [MonumentType]
 allMonumentTypes     = [minBound .. maxBound]
+allCivilizationTypes ::  [CivilizationType]
 allCivilizationTypes = [minBound .. maxBound]
 
+allMonuments :: [Tile]
 allMonuments     = concatMap (replicate 5 . Monument) allMonumentTypes
+allCivilizations :: [Tile]
 allCivilizations = concatMap (replicate 5 . Civilization) allCivilizationTypes
 
+funeral :: Tile
 funeral = Disaster Funeral
+drought ::  Tile
 drought = Disaster Drought
+unrest ::  Tile
 unrest = Disaster Unrest
+earthquake ::  Tile
 earthquake = Disaster Earthquake
 
 newtype Sun = Sun { sunValue :: Int } deriving (Eq, Ord)
@@ -189,6 +201,7 @@ playerToString (i, p) = "Player: " ++ show i ++ ": (" ++ show (score p) ++ "): "
 raTrackToString ::  Board -> String
 raTrackToString b = padWith '.' (raCountMax (numPlayers b)) $ replicate (raCount b) 'R'
 
+padWith ::  a -> Int -> [a] -> [a]
 padWith c n s | length s >= n = s
               | otherwise     = replicate padding c ++ s
    where padding = n - length s
@@ -237,8 +250,10 @@ instance Show Epoch where
 numPlayers :: Board -> Int
 numPlayers = length . M.keys . players
 
+startingSuns ::  [[[Sun]]]
 startingSuns = fmap (fmap (fmap Sun)) [ [[9,6,5,2], [8,7,4,3]]
                , [[13,8,5,2], [12, 9, 6, 3], [11, 10, 7, 4]]]
+
 initPlayers :: Int -> [Player]
 initPlayers n = map (\ss -> Player (ss, []) [] 10) sunSets
   where sunSets = head $ filter ((==n) . length) startingSuns 
@@ -254,7 +269,9 @@ initBoard ts = Board
              , currentPlayerId = 0
              } 
 
+playerCycleFromTo :: PlayerNum -> PlayerNum -> [PlayerNum]
 playerCycleFromTo pi mx = map (`mod` mx) [pi ..]
+playerCycle ::  Board -> [PlayerNum]
 playerCycle b = playerCycleFromTo  (currentPlayerId b) (numPlayers b)
 
 active ::  Board -> Player
@@ -267,6 +284,7 @@ advanceEpoch b = b { epoch = adv (epoch b) }
   where
    adv (Epoch 1) = Epoch 2
    adv (Epoch 2) = Epoch 3
+   adv other = error $ "BUG: Asked to advanceEpoch for epoch other than 1 or 2: " ++ show other
 
 removeTempTiles :: Player -> Player
 removeTempTiles p = p { tiles = filter isPermanentTile $ tiles p }
@@ -293,6 +311,7 @@ data ScoreReason = ScGods Int
                  | ScSuns Int ComparativeScoreReason
                  deriving (Show, Eq)
 
+scoreFrom :: ScoreReason -> Int
 scoreFrom r = case r of
   ScGods i          -> i
   ScPharaohs i _    -> i
@@ -348,7 +367,7 @@ scoreMonuments ts = ScMonuments scoreForDifferents scoreForIdenticals
 endEpoch :: Board -> (Bool, Board)
 endEpoch b = case epoch b of
   Epoch 3 -> (True, scoreEpoch $ b { raCount = 0, block = [] })
-  other   -> (False, advanceEpoch $ forAllPlayers removeTempTiles $ scoreEpoch $ forAllPlayers faceSunsUp $ b { block = [], raCount = 0 })
+  _other  -> (False, advanceEpoch $ forAllPlayers removeTempTiles $ scoreEpoch $ forAllPlayers faceSunsUp $ b { block = [], raCount = 0 })
     where faceSunsUp p = modSuns turnSunsFaceUp p
 
 forAllPlayers :: (Player -> Player) -> Board -> Board
@@ -398,7 +417,7 @@ canBidHigherThan :: (PlayerNum, Board) -> Sun -> Bool
 canBidHigherThan (pi, board) bid = 
   case ss of
      [] -> False
-     vs -> bestSun > bid
+     _  -> bestSun > bid
     where
       bestSun = maximum ss
       ss = faceUpSuns $ handOf pi board
@@ -429,7 +448,7 @@ winAuction pi ts disasterResolutions b winningSun =
   wipeBlock .
   addToTilesOf pi nonDisasterTiles $ b
 
-    where  wipeBlock b = b { block = []} 
+    where  wipeBlock brd = brd { block = []} 
            nonDisasterTiles = ts \\ disasterTiles
            disasterTiles    = [t | t@(Disaster _) <- ts]
 
@@ -437,17 +456,13 @@ winAuction pi ts disasterResolutions b winningSun =
 resolveDisasters :: PlayerNum -> [DisasterResolution] -> Board -> Board
 resolveDisasters pi rs b = foldl' (resolveDisaster pi) b rs
 resolveDisaster :: PlayerNum -> Board -> DisasterResolution -> Board
-resolveDisaster pi b (disasterType, discards) = removeFromTilesOf pi discards b
+resolveDisaster pi b (_disasterType, discards) = removeFromTilesOf pi discards b
 
 type SunsUpDown = ([Sun], [Sun])
 type DisasterResolution = (DisasterType, [Tile])
 
-turnSunsFaceUpFor :: PlayerNum -> Sun -> Board -> Board
-turnSunsFaceUpFor pi s b = b { players = M.adjust (modSuns turnSunsFaceUp) pi (players b) }
-
 turnSunsFaceUp :: SunsUpDown -> SunsUpDown
 turnSunsFaceUp (ups, downs) = (ups ++ downs, [])
-
 
 exchangeSun:: PlayerNum -> Sun -> Board -> Board
 exchangeSun pi toBoard b = 
@@ -461,7 +476,7 @@ exchangeGod pi t disResns b =
   resolveDisasters pi disResns $ removeFromBlock [t] $ removeFromTilesOf pi [God] $ addToTilesOf pi gainableTile b
   where
    removeFromBlock :: [Tile] -> Board -> Board
-   removeFromBlock ts b = b { block = block b \\ ts }
+   removeFromBlock ts brd = brd { block = block brd \\ ts }
    gainableTile = [t | isStoreable t]
 
 

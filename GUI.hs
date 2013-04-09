@@ -1,23 +1,25 @@
 module GUI where
-import Data.List (nub, sort, group, (\\), find, foldl')
-import Data.Maybe (fromMaybe, isJust, isNothing)
-import Debug.Trace (traceShow)
-import Test.HUnit
+import Prelude hiding (pi)
+import Data.List(find,(\\),sort)
+import Data.Maybe(isJust,isNothing)
+-- import Debug.Trace (traceShow)
+-- import Test.HUnit
 import System.Environment(getArgs)
 
-import Control.Arrow ((&&&))
-import Control.Monad (forM)
+-- import Control.Arrow ((&&&))
+-- import Control.Monad (forM)
 -- import qualified Data.Map as M
+
 import Game
 
 main ::  IO ()
 main = do
   args <- getArgs
-  let tiles = case args of
+  let ts = case args of
                 ["-d"] -> allTilesTweaked
                 _      -> allTiles
   _counts <- tests
-  fmap initBoard (initDeck tiles) >>= loopIO 
+  fmap initBoard (initDeck ts) >>= loopIO 
 
 
 drawTileIO :: Board -> IO Board
@@ -56,17 +58,17 @@ getDisasterResolutionsIO pi gainedTiles b = do
       nonDisasterTiles = gainedTiles \\ disasterTiles
       playerTiles      = tiles $ handOf pi b
       candidates       = playerTiles ++ nonDisasterTiles
-  getRes pi candidates disasterTypes
+  getRes candidates disasterTypes
   where
-   getRes :: PlayerNum -> [Tile] -> [DisasterType] -> IO [DisasterResolution]
-   getRes pi pts [] = return []
-   getRes pi pts dts = do
+   getRes :: [Tile] -> [DisasterType] -> IO [DisasterResolution]
+   getRes _pts [] = return []
+   getRes pts dts = do
      chosenDt <- pickOneFromMenuIO toCharAndShow pi dts "Pick a disaster to resolve: "
      discards <- pickDiscardsForDisasterIO pi pts chosenDt
      playMsg pi $ "Discarded "++show discards
      let pts' = pts \\ discards
      let dts' = dts \\ [chosenDt]
-     otherResns <- getRes pi pts' dts'
+     otherResns <- getRes pts' dts'
      return $ (chosenDt, discards) : otherResns
 
 
@@ -94,7 +96,7 @@ runAuctionIO reason b = do
   putStrLn $ boardToString b
   bestBid  <- findBestBidIO (reason == RaCalled) b (playersForAuction b) Nothing
   disResns <- case bestBid of
-                   Just (sun, winner) -> getDisasterResolutionsIO winner (block b) b
+                   Just (_sun, winner) -> getDisasterResolutionsIO winner (block b) b
                    Nothing            -> return []
   let (newBoard, winr) = case bestBid of
                             Just (sun, winner) -> (winAuction winner (block b) disResns  b sun, Just winner)
@@ -113,14 +115,14 @@ getBidChoiceIO isMandatory b pi currBid = do
        ""    -> if isMandatory 
                 then playMsg pi "You must bid" >> getBidChoiceIO isMandatory b pi currBid 
                 else return Nothing
-       other -> case readInt l of
+       _     -> case readInt l of
          Just i -> if i `elem` possibleBids
                      then return $ Just (Sun i, pi)
                      else playMsg pi "You don't have that sun!" >> getBidChoiceIO isMandatory b pi currBid
          _      -> playMsg pi "What?" >> getBidChoiceIO isMandatory b pi currBid
 
 findBestBidIO :: Bool -> Board -> [PlayerNum] -> Maybe (Sun, PlayerNum)  -> IO (Maybe (Sun, PlayerNum))
-findBestBidIO _ b [] topBid = return topBid
+findBestBidIO _ _ [] topBid = return topBid
 findBestBidIO lastMustBid b (pi:pis) topBid = do
      let isLast = null pis 
      if isStillInPlay pi b && maybe True (((pi,b) `canBidHigherThan`) . fst) topBid

@@ -2,7 +2,7 @@ module Shuffle where
 import System.Random
 
 shuffle :: [a] -> IO [a]
-shuffle l = shuffle' l []
+shuffle items = shuffle' items []
   where
    shuffle' [] acc = return acc
    shuffle' l acc =
