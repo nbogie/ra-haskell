@@ -155,7 +155,7 @@ pickOneFromMenuIO shw pi items prompt = do
   l <- getLine
   case readInt l >>= itemIfValid of
     Just x -> playMsg pi ("You chose " ++ shw x) >> return x
-    Nothing -> playMsg pi ("Invalid choice") >> pickOneFromMenuIO shw pi items prompt
+    Nothing -> playMsg pi "Invalid choice" >> pickOneFromMenuIO shw pi items prompt
     where 
       itemIfValid n = fmap snd $ find ((==n) . fst) mapping
       mapping = zip [0..] items
@@ -168,7 +168,7 @@ loopIO board = do
       pi = currentPlayerId board
   if not $ isStillInPlay pi board 
   then do
-       playMsg pi $ "You are being skipped - you have no face-up suns."
+       playMsg pi "You are being skipped - you have no face-up suns."
        loopIO (advancePlayer board)
   else do
      playMsg pi keyPrompt

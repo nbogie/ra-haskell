@@ -482,7 +482,7 @@ testScoreMonuments = TestList
   , "monuments" ~: ScMonuments 1 0 ~=? scoreMonuments [Pyramid]
   , "monuments" ~: ScMonuments 1 0 ~=? scoreMonuments [Pyramid, Pyramid]
   , "monuments" ~: ScMonuments 1 5 ~=? scoreMonuments [Pyramid, Pyramid, Pyramid]
-  , "monuments" ~: ScMonuments 15 120 ~=? (scoreMonuments [mt | Monument mt <- allMonuments])
+  , "monuments" ~: ScMonuments 15 120 ~=? scoreMonuments [mt | Monument mt <- allMonuments]
   ]
 
 tests ::  IO Counts
