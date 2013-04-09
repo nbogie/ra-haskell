@@ -10,11 +10,16 @@ import Game
 main ::  IO ()
 main = do
   args <- getArgs
-  let ts = case args of
-                ["-d"] -> allTilesTweaked
-                _      -> allTiles
+  let usage = "Usage: prog -p <NumPlayers> [-d]"
+  let (numPlayers, tileSet) = case args of
+           ("-p":nstr:rest) -> if read nstr `elem` [2..5] 
+                                 then (read nstr, ts)
+                                 else error usage
+             where ts = if "-d" `elem` rest then allTilesTweaked else allTiles
+           _                 -> error usage
+
   _counts <- tests
-  fmap initBoard (initDeck ts) >>= loopIO 
+  fmap (initBoard numPlayers) (initDeck tileSet) >>= loopIO 
 
 ---------------------------------------------------------
 -- TOP LEVEL

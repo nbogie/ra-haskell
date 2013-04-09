@@ -1,4 +1,4 @@
-* support full number of players (2-5)
+* handle case where all players run out of suns before end of epoch
 * improve types so that certain tiles are not holdable in a hand (disasters and Ra tiles), enforced by the type system.  See docs/question_tiletypes.txt
 * multiple ui's - e.g. curses, gloss - will highlight game/ui boundary
 * leverage the typed scoring by providing a scoring breakdown in the UI, and maybe a hint mode telling you what the current block is immediately worth to you.
@@ -8,3 +8,4 @@ DONE:
 * implement forced bidding for caller when auction has been called voluntarily and no one else has bid
 * implemented no-user-choice disaster resolution
 * implement user-choice during resolution of unrest and quake
+* support full number of players (2-5)

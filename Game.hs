@@ -256,14 +256,14 @@ initPlayers :: Int -> [Player]
 initPlayers n = map (\ss -> Player (ss, []) [] 10) sunSets
   where sunSets = head $ filter ((==n) . length) startingSuns 
 
-initBoard :: [Tile] -> Board
-initBoard ts = Board 
+initBoard :: Int -> [Tile] -> Board
+initBoard numPlayers ts = Board 
              { raCount = 0
              , block = []
              , boardSun = Sun 1
              , epoch = Epoch 1
              , deck = ts
-             , players = M.fromList $ zip (playerCycleFromTo 0 3) (initPlayers 3) 
+             , players = M.fromList $ zip (playerCycleFromTo 0 numPlayers) (initPlayers numPlayers) 
              , currentPlayerId = 0
              } 
 
