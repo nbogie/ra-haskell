@@ -394,6 +394,7 @@ scoreMonuments ts = ScMonuments scoreForDifferents scoreForIdenticals
     scoreForDifferents = [0,1,2,3,4,5,6,10,15] !! length (nub ts)
     scoreForIdenticals = sum $ map scoreIdenticalGroup $ filter ( (>=3) . length) $ group $ sort ts
     scoreIdenticalGroup g = [0,0,0,5,10,15] !! length g
+
 endEpoch :: Board -> (Bool, Board)
 endEpoch b = case epoch b of
   Epoch 3 -> (True, scoreEpoch $ b { raCount = 0, block = [] })
@@ -407,7 +408,8 @@ initDeck :: [Tile] -> IO [Tile]
 initDeck = shuffle
 
 raTrackFull :: Board -> Bool
-raTrackFull = (>=8) . raCount
+raTrackFull b = (>=mx) . raCount $ b
+  where mx = raCountMax $ numPlayers b
 
 incRaCount :: Board -> Board
 incRaCount ( b@Board{ raCount = rc }) = b { raCount = rc + 1 }
@@ -429,8 +431,19 @@ readInt str = case reads str of
 
 type PlayerNum = Int
 
-isStillInPlay :: PlayerNum -> Board -> Bool
-isStillInPlay pi b = not $ null $ faceUpSuns $ handOf pi b
+isGameOver :: Board -> Bool
+isGameOver b = deckEmpty b || 
+ (epoch b == Epoch 3 && (noOneLeftInPlay b || raTrackFull b))
+
+someoneIsStillInPlay :: Board -> Bool
+someoneIsStillInPlay = or . M.elems . M.map isStillInPlay . players
+
+noOneLeftInPlay :: Board -> Bool
+noOneLeftInPlay = not . someoneIsStillInPlay
+
+isStillInPlay :: Player -> Bool
+isStillInPlay = not . null . faceUpSuns
+
 handOf :: PlayerNum -> Board -> Player
 handOf pi b = players b M.! pi
 

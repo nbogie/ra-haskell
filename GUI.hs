@@ -29,43 +29,51 @@ loopIO ::  Board -> IO ()
 loopIO board = do
   let 
       pi = currentPlayerId board
-  if not $ isStillInPlay pi board 
+  if isGameOver board
   then do
-       playMsg pi "You are being skipped - you have no face-up suns."
-       loopIO (advancePlayer board)
-  else do
-     putStrLn $ boardToString board
-     choice <- getChoice pi
-     case choice of
-       ChoiceDraw -> do
-         playMsg pi "Choice: Draw a tile"
-         if blockFull board
-         then
-           playMsg pi "Block is full - you may only call Ra or use a God Tile" >> loopIO board
-         else
-           drawTileIO board >>= loopIO
+    putStrLn "GAME OVER. Final score follows: "
+    putStrLn $ boardToString $ scoreEpoch board
+  else
+    if not $ isStillInPlay $ handOf pi board
+    then do
+         playMsg pi "You are being skipped - you have no face-up suns."
+         loopIO (advancePlayer board)
+    else do
+       putStrLn $ boardToString board
+       choice <- getChoice pi
+       case choice of
+         ChoiceDraw -> do
+           playMsg pi "Choice: Draw a tile"
+           if blockFull board
+           then
+             playMsg pi "Block is full - you may only call Ra or use a God Tile" >> loopIO board
+           else
+             drawTileIO board >>= loopIO
 
-       ChoiceQuit -> playMsg pi "Choice: Quit"
+         ChoiceQuit -> playMsg pi "Choice: Quit"
 
-       ChoiceUseGod -> do
-         playMsg pi "Choice: Use God tile(s)."
-         if currentPlayerCanUseGod board
-         then useGodMany1TimesIO pi board >>= loopIO . advancePlayer
-         else do
-           playMsg pi "You have no God tiles to use or there are no tiles to take!"
+         ChoiceUseGod -> do
+           playMsg pi "Choice: Use God tile(s)."
+           if currentPlayerCanUseGod board
+           then useGodMany1TimesIO pi board >>= loopIO . advancePlayer
+           else do
+             playMsg pi "You have no God tiles to use or there are no tiles to take!"
+             loopIO board
+
+         ChoiceShowScores -> do
+           putStrLn "Choice: Compute score as though at epoch end."
+           putStrLn $ boardToString $ scoreEpoch board
            loopIO board
 
-       ChoiceShowScores -> do
-         putStrLn "Choice: Compute score as though at epoch end."
-         putStrLn $ boardToString $ scoreEpoch board
-         loopIO board
-
-       ChoiceCallRa -> do
-         putStrLn "Choice: Call Ra."
-         let reason = if blockFull board then BlockFull else RaCalledVoluntarily
-         runAuctionIO reason board >>= loopIO . advancePlayer
-         -- TODO: deal with case where the last sun was just used, so no one in play
-       
+         ChoiceCallRa -> do
+           putStrLn "Choice: Call Ra."
+           let reason = if blockFull board then BlockFull else RaCalledVoluntarily
+           runAuctionIO reason board >>= \b ->
+             if noOneLeftInPlay b
+             then
+               loopIO . snd . endEpoch . advancePlayer $ b
+             else
+               loopIO . advancePlayer $ b
 
 data PlayChoice = ChoiceDraw | ChoiceCallRa | ChoiceQuit | ChoiceUseGod | ChoiceShowScores deriving (Show, Eq) 
 
@@ -97,9 +105,7 @@ drawTileIO board =
          if raTrackFull newBoard
          then do
            print "Ra Track Full - Immediate End Of Epoch"
-           case (endEpoch . advancePlayer ) newBoard of
-             (True, b)  -> print "LAST EPOCH.  GAME OVER AFTER FINAL SCORING" >> return b
-             (False, b) -> return b
+           return $ (snd . endEpoch . advancePlayer ) newBoard 
          else
            -- note: run the auction, first, then advance the player, then cede control finally
            runAuctionIO RaDrawn newBoard >>= return . advancePlayer
@@ -149,7 +155,7 @@ findBestBidIO :: Bool -> Board -> [PlayerNum] -> Maybe (Sun, PlayerNum)  -> IO (
 findBestBidIO _ _ [] topBid = return topBid
 findBestBidIO lastMustBid b (pi:pis) topBid = do
      let isLast = null pis 
-     if isStillInPlay pi b && maybe True (((pi,b) `canBidHigherThan`) . fst) topBid
+     if isStillInPlay (handOf pi b) && maybe True (((pi,b) `canBidHigherThan`) . fst) topBid
      then
         if isLast && isNothing topBid && lastMustBid
         then
