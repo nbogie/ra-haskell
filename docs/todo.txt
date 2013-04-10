@@ -1,9 +1,10 @@
-* handle case where all players run out of suns before end of epoch
-* improve types so that certain tiles are not holdable in a hand (disasters and Ra tiles), enforced by the type system.  See docs/question_tiletypes.txt
 * multiple ui's - e.g. curses, gloss - will highlight game/ui boundary
 * leverage the typed scoring by providing a scoring breakdown in the UI, and maybe a hint mode telling you what the current block is immediately worth to you.
+* improve types to enforce that certain tiles (Ra tiles) cannot be held in the auction block.
 
 DONE:
+* improve types so that certain tiles are not holdable in a hand (disasters and Ra tiles), enforced by the type system.  See docs/question_tiletypes.txt
+* handle case where all players run out of suns before end of epoch
 * correct the design: when the block is full, an auction isn't automatically called - player may call ra, OR use god(s) if held. Remember this invocation of ra is classed involuntary.
 * implement forced bidding for caller when auction has been called voluntarily and no one else has bid
 * implemented no-user-choice disaster resolution

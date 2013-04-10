@@ -20,15 +20,22 @@ class (Show a) => ToChar a where
        c = toChar t
        paren x = "(" ++ [x] ++ ")"
 
-data Tile = Ra 
-          | Pharaoh 
+  showName :: a -> String
+
+
+data Tile = Storeable StoreableTile
+          | NonStoreable NonStoreableTile deriving (Show, Eq, Ord)
+
+data NonStoreableTile = Ra | Disaster DisasterType deriving (Eq, Show, Ord)
+
+data StoreableTile = 
+            Pharaoh 
           | God 
           | Gold 
           | Nile 
           | Flood 
           | Monument MonumentType
           | Civilization CivilizationType
-          | Disaster DisasterType 
           deriving (Eq, Show, Ord)
 
 {--
@@ -36,11 +43,11 @@ data Tile = Ra
   However, Disaster tiles may be taken using a god, that is not storeability but takeability.
   We want to be able to store a mix of such tiles in the deck, such that a Ra and a God and a Flood could all be in the same list of tiles - does this preclude type classes?
 --}
-isPermanentTile ::  Tile -> Bool
+isPermanentTile ::  StoreableTile -> Bool
 isPermanentTile = not . isTempTile
-isTempTile :: Tile -> Bool
+
+isTempTile :: StoreableTile -> Bool
 isTempTile t = case t of
-  Ra             -> True -- TODesign: this question should never be asked
   Pharaoh        -> False
   God            -> True
   Gold           -> True
@@ -48,24 +55,28 @@ isTempTile t = case t of
   Flood          -> True
   Monument _     -> False
   Civilization _ -> True
-  Disaster _     -> True --TODesign: this question should never be asked
 
 isGoddable :: Tile -> Bool
-isGoddable God = False
+isGoddable (Storeable God) = False
 -- TODesign: this question should never be asked.  we ask isGoddable of an Tile Auctionable
-isGoddable Ra  = False
+isGoddable (NonStoreable Ra)  = False
 isGoddable _   = True
 
--- can be kept in player tile set on auction win or after exchange by god
--- TODesign: solve with types
-isStoreable :: Tile -> Bool
-isStoreable (Disaster _) = False
-isStoreable Ra           = False
-isStoreable _            = True
-
 instance ToChar Tile where
+   toChar (Storeable t)    = toChar t
+   toChar (NonStoreable t) = toChar t
+   showName (Storeable t) = showName t
+   showName (NonStoreable t) = showName t
+
+
+instance ToChar NonStoreableTile where
+   toChar Ra            = 'R'
+   toChar (Disaster dt) = toChar dt
+   showName Ra = "Ra"
+   showName (Disaster dt) = show dt
+
+instance ToChar StoreableTile where
    toChar t = case t of
-     Ra              -> 'R'
      Pharaoh         -> 'P'
      God             -> 'G'
      Gold            -> '$'
@@ -73,7 +84,8 @@ instance ToChar Tile where
      Flood           -> '~'
      Monument mt     -> toChar mt
      Civilization ct -> toChar ct
-     Disaster dt     -> toChar dt
+
+   showName = show
 
 instance ToChar MonumentType where
    toChar t = case t of
@@ -85,6 +97,7 @@ instance ToChar MonumentType where
       Statues     -> '6'
       StepPyramid -> '7'
       Temple      -> '8'
+   showName = show
   
 data MonumentType = Fortress 
                   | Obelisk 
@@ -109,6 +122,8 @@ instance ToChar DisasterType where
      Unrest     -> 'u'
      Drought    -> '_'
      Earthquake -> '0'
+   showName = show
+
 
 data CivilizationType = Art 
                       | Agriculture 
@@ -123,53 +138,70 @@ instance ToChar CivilizationType where
       Religion    -> '^'
       Astronomy   -> '*'
       Writing     -> '&'
+  showName = show
+
+allTilesTweaked :: [Tile]
+allTilesTweaked = map Storeable allStoreableTilesTweaked ++ map NonStoreable allNonStoreableTilesTweaked
 
 allTiles :: [Tile]
-allTiles = replicate 30 Ra      ++ 
+allTiles = map Storeable allStoreableTiles ++ map NonStoreable allNonStoreableTiles
+
+allNonStoreableTiles :: [NonStoreableTile]
+allNonStoreableTiles = 
+   replicate 30 Ra      ++ 
+   replicate 2 funeral  ++ 
+   replicate 2 drought  ++ 
+   replicate 4 unrest   ++ 
+   replicate 2 earthquake
+
+allStoreableTiles :: [StoreableTile]
+allStoreableTiles = 
            replicate 8 God      ++ 
            replicate 25 Pharaoh ++ 
-           replicate 2 funeral  ++ 
            replicate 25 Nile    ++ 
            replicate 12 Flood   ++ 
-           replicate 2 drought  ++ 
            allCivilizations     ++ 
-           replicate 4 unrest   ++ 
            replicate 5 Gold     ++ 
-           allMonuments         ++ 
-           replicate 2 earthquake
+           allMonuments
 
--- a tweaked set for an event-heavy game during dev
-allTilesTweaked :: [Tile]
-allTilesTweaked = replicate 20 Ra ++ 
-           replicate 30 God     ++ 
+-------------------------------------------------
+-- Tweaked tile set for dev
+-------------------------------------------------
+allNonStoreableTilesTweaked :: [NonStoreableTile]
+allNonStoreableTilesTweaked = 
+   replicate 30 Ra      ++ 
+   replicate 4 funeral  ++ 
+   replicate 4 drought  ++ 
+   replicate 6 unrest   ++ 
+   replicate 4 earthquake
+
+allStoreableTilesTweaked :: [StoreableTile]
+allStoreableTilesTweaked = 
+           replicate 20 God      ++ 
            replicate 25 Pharaoh ++ 
-           replicate 4 funeral  ++ 
            replicate 25 Nile    ++ 
            replicate 12 Flood   ++ 
-           replicate 4 drought  ++ 
            allCivilizations     ++ 
-           replicate 8 unrest   ++ 
            replicate 5 Gold     ++ 
-           allMonuments         ++ 
-           replicate 6 earthquake
+           allMonuments
 
 allMonumentTypes ::  [MonumentType]
 allMonumentTypes     = [minBound .. maxBound]
 allCivilizationTypes ::  [CivilizationType]
 allCivilizationTypes = [minBound .. maxBound]
 
-allMonuments :: [Tile]
+allMonuments :: [StoreableTile]
 allMonuments     = concatMap (replicate 5 . Monument) allMonumentTypes
-allCivilizations :: [Tile]
+allCivilizations :: [StoreableTile]
 allCivilizations = concatMap (replicate 5 . Civilization) allCivilizationTypes
 
-funeral :: Tile
+funeral :: NonStoreableTile
 funeral = Disaster Funeral
-drought ::  Tile
+drought ::  NonStoreableTile
 drought = Disaster Drought
-unrest ::  Tile
+unrest ::  NonStoreableTile
 unrest = Disaster Unrest
-earthquake ::  Tile
+earthquake ::  NonStoreableTile
 earthquake = Disaster Earthquake
 
 newtype Sun = Sun { sunValue :: Int } deriving (Eq, Ord)
@@ -228,7 +260,7 @@ playersFromCurrent :: Board -> [(PlayerNum, Player)]
 playersFromCurrent b = map (\i -> (i, players b M.! i)) (take lim $ playerCycle b)
   where lim = numPlayers b
 data Player = Player { suns :: ([Sun], [Sun])
-                     , tiles :: [Tile]
+                     , tiles :: [StoreableTile]
                      , score :: Int
                      } deriving (Show, Eq)
 
@@ -385,7 +417,7 @@ scoreEpochForPlayer isFinal pharCounts sunTotals p = p { score = max 0 (score p 
      monumentScore = scoreMonuments monumentTypes
      monumentTypes = [t | Monument t <- tiles p]
      -- so useful!
-     num :: Tile -> Int
+     num :: StoreableTile -> Int
      num t = length $ filter (==t) $ tiles p 
 
 scoreMonuments :: [MonumentType] -> ScoreReason
@@ -451,7 +483,7 @@ handOf pi b = players b M.! pi
 
 
 
-relatedToDisaster :: DisasterType -> [Tile]
+relatedToDisaster :: DisasterType -> [StoreableTile]
 relatedToDisaster Drought = [Flood, Nile]
 relatedToDisaster Funeral = [Pharaoh]
 relatedToDisaster Unrest = map Civilization [minBound .. maxBound]
@@ -475,14 +507,13 @@ faceUpSuns = fst . suns
 
 modSuns :: (SunsUpDown -> SunsUpDown) -> Player -> Player
 modSuns f p = p { suns = f (suns p) } 
-modTiles :: ([Tile] -> [Tile]) -> Player -> Player
+modTiles :: ([StoreableTile] -> [StoreableTile]) -> Player -> Player
 modTiles f p = p { tiles = f (tiles p) }
 
-addToTilesOf :: PlayerNum -> [Tile] -> Board -> Board
-addToTilesOf pi ts b = b { players = M.adjust (modTiles (++ storeables)) pi (players b) }
-  where storeables = filter isStoreable ts
+addToTilesOf :: PlayerNum -> [StoreableTile] -> Board -> Board
+addToTilesOf pi ts b = b { players = M.adjust (modTiles (++ ts)) pi (players b) }
 
-removeFromTilesOf :: PlayerNum -> [Tile] -> Board -> Board
+removeFromTilesOf :: PlayerNum -> [StoreableTile] -> Board -> Board
 removeFromTilesOf pi ts b = b { players = M.adjust (modTiles (\\ ts)) pi (players b) }
 
 -- wins an auction, resolving given disasters with the given discards
@@ -494,8 +525,7 @@ winAuction pi ts disasterResolutions b winningSun =
   addToTilesOf pi nonDisasterTiles $ b
 
     where  wipeBlock brd = brd { block = []} 
-           nonDisasterTiles = ts \\ disasterTiles
-           disasterTiles    = [t | t@(Disaster _) <- ts]
+           nonDisasterTiles = [t | Storeable t <- ts]
 
 -- shared between winAuction and exchangeGod
 resolveDisasters :: PlayerNum -> [DisasterResolution] -> Board -> Board
@@ -504,7 +534,7 @@ resolveDisaster :: PlayerNum -> Board -> DisasterResolution -> Board
 resolveDisaster pi b (_disasterType, discards) = removeFromTilesOf pi discards b
 
 type SunsUpDown = ([Sun], [Sun])
-type DisasterResolution = (DisasterType, [Tile])
+type DisasterResolution = (DisasterType, [StoreableTile])
 
 turnSunsFaceUp :: SunsUpDown -> SunsUpDown
 turnSunsFaceUp (ups, downs) = (ups ++ downs, [])
@@ -518,11 +548,11 @@ exchangeSun pi toBoard b =
 
 exchangeGod :: PlayerNum -> Tile -> [DisasterResolution] -> Board -> Board
 exchangeGod pi t disResns b = 
-  resolveDisasters pi disResns $ removeFromBlock [t] $ removeFromTilesOf pi [God] $ addToTilesOf pi gainableTile b
+  resolveDisasters pi disResns $ removeFromBlock [t] $ removeFromTilesOf pi [God] $ addToTilesOf pi storeableTile b
   where
    removeFromBlock :: [Tile] -> Board -> Board
    removeFromBlock ts brd = brd { block = block brd \\ ts }
-   gainableTile = [t | isStoreable t]
+   storeableTile= [st | Storeable st <- [t]]
 
 
 currentPlayerCanUseGod ::  Board -> Bool

@@ -105,9 +105,9 @@ drawTileIO board =
     return board
   else do
     let (tile:rest) = deck board
-    putStrLn $ "Tile drawn: " ++ show tile
+    putStrLn $ "Tile drawn: " ++ showName tile
     case tile of
-      Ra -> do
+      NonStoreable Ra -> do
          let newBoard = incRaCount $ board { deck = rest }
          if raTrackFull newBoard
          then do
@@ -180,25 +180,26 @@ findBestBidIO lastMustBid b (pi:pis) topBid = do
 -----------------------------------------------------------------------------
 getDisasterResolutionsIO:: PlayerNum -> [Tile] -> Board -> IO [DisasterResolution]
 getDisasterResolutionsIO pi gainedTiles b = do
-  let disasterTiles    = [t | t@(Disaster _) <- gainedTiles]
+  let disasterTiles    = [t | (NonStoreable t@(Disaster _)) <- gainedTiles]
       disasterTypes    = [dtyp | Disaster dtyp <- disasterTiles]
-      nonDisasterTiles = gainedTiles \\ disasterTiles
+      nonDisasterTiles :: [StoreableTile]
+      nonDisasterTiles = [t | Storeable t <- gainedTiles]
       playerTiles      = tiles $ handOf pi b
       candidates       = playerTiles ++ nonDisasterTiles
   getRes candidates disasterTypes
   where
-   getRes :: [Tile] -> [DisasterType] -> IO [DisasterResolution]
+   getRes :: [StoreableTile] -> [DisasterType] -> IO [DisasterResolution]
    getRes _pts [] = return []
    getRes pts dts = do
-     chosenDt <- pickOneFromMenuIO show pi dts "Pick a disaster to resolve: "
+     chosenDt <- pickOneFromMenuIO showName pi dts "Pick a disaster to resolve: "
      discards <- pickDiscardsForDisasterIO pi pts chosenDt
-     playMsg pi $ "Discarded "++show discards
+     playMsg pi $ "Discarded " ++ show discards
      let pts' = pts \\ discards
      let dts' = dts \\ [chosenDt]
      otherResns <- getRes pts' dts'
      return $ (chosenDt, discards) : otherResns
 
-pickDiscardsForDisasterIO ::  PlayerNum -> [Tile] -> DisasterType -> IO [Tile]
+pickDiscardsForDisasterIO ::  PlayerNum -> [StoreableTile] -> DisasterType -> IO [StoreableTile]
 pickDiscardsForDisasterIO pi ts dis = pickDis dis
   where 
   relevant= filter (`elem` relatedToDisaster dis) ts
@@ -207,8 +208,8 @@ pickDiscardsForDisasterIO pi ts dis = pickDis dis
             where allz t = filter (==t) relevant
   pickDis _ | length relevant <= 2 = return $ take 2 relevant -- no choice
             | otherwise            = do  -- guaranteed at least two choices
-    d1 <- pickOneFromMenuIO show pi (sort relevant)           "Pick first discard"
-    d2 <- pickOneFromMenuIO show pi (sort (relevant \\ [d1])) "Pick second discard"
+    d1 <- pickOneFromMenuIO showName pi (sort relevant)           "Pick first discard"
+    d2 <- pickOneFromMenuIO showName pi (sort (relevant \\ [d1])) "Pick second discard"
     return [d1,d2]
 
 
@@ -218,7 +219,7 @@ pickDiscardsForDisasterIO pi ts dis = pickDis dis
 ---------------------------------------------------------
 useGodIO :: PlayerNum -> Board -> IO Board
 useGodIO pi b = do
-   tile <- pickOneFromMenuIO show pi (filter isGoddable (block b))  
+   tile <- pickOneFromMenuIO showName pi (filter isGoddable (block b))  
            "Pick a tile from block to take with your god"
    playMsg pi $ "You took (with God tile): " ++ show tile
    disResns <- getDisasterResolutionsIO pi [tile] b
