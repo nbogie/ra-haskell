@@ -10,7 +10,7 @@ import Game
 main ::  IO ()
 main = do
   args <- getArgs
-  let usage = "Usage: prog -p <NumPlayers> [-d]"
+  let usage = "Usage: prog -p <NumPlayers> [-d] (where NumPlayers is in [2..5])"
   let (nPlayers, tileSet) = case args of
            ("-p":nStr:rest) -> if parsedN `elem` [2..5]
                                  then (parsedN, ts)
