@@ -67,8 +67,12 @@ loopIO board = do
            putStrLn $ boardToString $ scoreEpoch board
            loopIO board
 
+         ChoiceAdvanceEpoch -> do
+           playMsg pi "Choice: End epoch (dev only)"
+           loopIO $ (snd . endEpoch) board
+
          ChoiceCallRa -> do
-           putStrLn "Choice: Call Ra."
+           playMsg pi "Choice: Call Ra."
            let reason = if blockFull board then BlockFull else RaCalledVoluntarily
            runAuctionIO reason board >>= \b ->
              if noOneLeftInPlay b
@@ -77,7 +81,7 @@ loopIO board = do
              else
                loopIO . advancePlayer $ b
 
-data PlayChoice = ChoiceDraw | ChoiceCallRa | ChoiceQuit | ChoiceUseGod | ChoiceShowScores deriving (Show, Eq) 
+data PlayChoice = ChoiceDraw | ChoiceCallRa | ChoiceQuit | ChoiceUseGod | ChoiceShowScores | ChoiceAdvanceEpoch deriving (Show, Eq) 
 
 getChoice :: PlayerNum -> IO PlayChoice
 getChoice pi = do
@@ -85,6 +89,7 @@ getChoice pi = do
    l <- getLine
    case l of
       ""    -> return ChoiceDraw
+      "e"   -> return ChoiceAdvanceEpoch
       "g"   -> return ChoiceUseGod
       "q"   -> return ChoiceQuit
       "r"   -> return ChoiceCallRa
