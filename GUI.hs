@@ -32,54 +32,51 @@ loopIO board = do
   let 
       pi = currentPlayerId board
   if isGameOver board
-  then do
+    then do
     putStrLn "GAME OVER. Final score follows: "
     putStrLn $ boardToString $ scoreEpoch board
-  else
-    if not $ isStillInPlay $ handOf pi board
-    then do
+    else if not $ isStillInPlay $ handOf pi board
+      then do
          playMsg pi "You are being skipped - you have no face-up suns."
          loopIO (advancePlayer board)
-    else do
-       putStrLn $ boardToString board
-       choice <- getChoice pi
-       case choice of
-         ChoiceDraw -> do
-           playMsg pi "Choice: Draw a tile"
-           if blockFull board
-           then
-             playMsg pi "Block is full - you may only call Ra or use a God Tile" >> loopIO board
-           else
-             drawTileIO board >>= loopIO
+       else do
+          putStrLn $ boardToString board
+          choice <- getChoice pi
+          case choice of
+            ChoiceDraw -> do
+              playMsg pi "Choice: Draw a tile"
+              if blockFull board
+                then playMsg pi "Block is full - you may only call Ra or use a God Tile" >> loopIO board
+                else drawTileIO board >>= loopIO
 
-         ChoiceQuit -> playMsg pi "Choice: Quit"
+            ChoiceQuit -> playMsg pi "Choice: Quit"
 
-         ChoiceUseGod -> do
-           playMsg pi "Choice: Use God tile(s)."
-           if currentPlayerCanUseGod board
-           then useGodMany1TimesIO pi board >>= loopIO . advancePlayer
-           else do
-             playMsg pi "You have no God tiles to use or there are no tiles to take!"
-             loopIO board
+            ChoiceUseGod -> do
+              playMsg pi "Choice: Use God tile(s)."
+              if currentPlayerCanUseGod board
+                then useGodMany1TimesIO pi board >>= loopIO . advancePlayer
+                else do
+                  playMsg pi "You have no God tiles to use or there are no tiles to take!"
+                  loopIO board
 
-         ChoiceShowScores -> do
-           putStrLn "Choice: Compute score as though at epoch end."
-           putStrLn $ boardToString $ scoreEpoch board
-           loopIO board
+            ChoiceShowScores -> do
+              putStrLn "Choice: Compute score as though at epoch end."
+              putStrLn $ boardToString $ scoreEpoch board
+              loopIO board
 
-         ChoiceAdvanceEpoch -> do
-           playMsg pi "Choice: End epoch (dev only)"
-           loopIO $ (snd . endEpoch) board
+            ChoiceAdvanceEpoch -> do
+              playMsg pi "Choice: End epoch (dev only)"
+              loopIO $ (snd . endEpoch) board
 
-         ChoiceCallRa -> do
-           playMsg pi "Choice: Call Ra."
-           let reason = if blockFull board then BlockFull else RaCalledVoluntarily
-           runAuctionIO reason board >>= \b ->
-             if noOneLeftInPlay b
-             then
-               loopIO . snd . endEpoch . advancePlayer $ b
-             else
-               loopIO . advancePlayer $ b
+            ChoiceCallRa -> do
+              playMsg pi "Choice: Call Ra."
+              let reason = if blockFull board then BlockFull else RaCalledVoluntarily
+              runAuctionIO reason board >>= \b ->
+                if noOneLeftInPlay b
+                then
+                  loopIO . snd . endEpoch . advancePlayer $ b
+                else
+                  loopIO . advancePlayer $ b
 
 data PlayChoice = ChoiceDraw | ChoiceCallRa | ChoiceQuit | ChoiceUseGod | ChoiceShowScores | ChoiceAdvanceEpoch deriving (Show, Eq) 
 
@@ -110,12 +107,10 @@ drawTileIO board =
       Ra -> do
          let newBoard = incRaCount $ board { deck = rest }
          if raTrackFull newBoard
-         then do
-           print "Ra Track Full - Immediate End Of Epoch"
-           return $ (snd . endEpoch . advancePlayer ) newBoard 
-         else
-           -- note: run the auction, first, then advance the player, then cede control finally
-           runAuctionIO RaDrawn newBoard >>= return . advancePlayer
+           then do
+             print "Ra Track Full - Immediate End Of Epoch"
+             return $ (snd . endEpoch . advancePlayer ) newBoard 
+           else runAuctionIO RaDrawn newBoard >>= return . advancePlayer
       next -> do
          let newBlock = next : block board
          let newBoard = board { deck = rest, block = newBlock } 
@@ -163,17 +158,17 @@ findBestBidIO _ _ [] topBid = return topBid
 findBestBidIO lastMustBid b (pi:pis) topBid = do
      let isLast = null pis 
      if isStillInPlay (handOf pi b) && maybe True (((pi,b) `canBidHigherThan`) . fst) topBid
-     then
-        if isLast && isNothing topBid && lastMustBid
-        then
-           getBidChoiceIO True b pi topBid
-        else do
-           bc <- getBidChoiceIO False b pi topBid
-           let newBid = if isJust bc then bc else topBid
-           findBestBidIO lastMustBid b pis newBid
-     else do 
-       playMsg pi $ "You cannot bid (better than " ++ show topBid ++ ")"
-       findBestBidIO lastMustBid b pis topBid
+       then
+         if isLast && isNothing topBid && lastMustBid
+           then
+             getBidChoiceIO True b pi topBid
+           else do
+             bc <- getBidChoiceIO False b pi topBid
+             let newBid = if isJust bc then bc else topBid
+             findBestBidIO lastMustBid b pis newBid
+       else do 
+         playMsg pi $ "You cannot bid (better than " ++ show topBid ++ ")"
+         findBestBidIO lastMustBid b pis topBid
 
 -----------------------------------------------------------------------------
 -- DISASTER RESOLUTION
@@ -228,12 +223,12 @@ useGodMany1TimesIO::  PlayerNum -> Board -> IO Board
 useGodMany1TimesIO pi board = do
    b <- useGodIO pi board
    if currentPlayerCanUseGod b
-   then do
-      continueChoice <- pickOneFromMenuIO show pi [UseAnotherGod, FinishTurn] "Use another god?"
-      if continueChoice == UseAnotherGod 
-      then useGodMany1TimesIO pi b
-      else return b
-   else return b
+     then do
+       continueChoice <- pickOneFromMenuIO show pi [UseAnotherGod, FinishTurn] "Use another god?"
+       if continueChoice == UseAnotherGod 
+         then useGodMany1TimesIO pi b
+         else return b
+     else return b
 
 data ContinueChoice = UseAnotherGod | FinishTurn deriving (Show, Eq)
 
