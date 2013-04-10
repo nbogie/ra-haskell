@@ -3,7 +3,10 @@
 data Tile = Storeable StoreableTile 
           | NonStoreable NonstoreableTile deriving (Show, Eq, Ord)
 
--- A non-solution follows, working only where we have only two types of tile with no overlap
+-- A non-solution follows, working only where we have only two types of tile with no overlap.
+-- This was implemented in commit 77c16fdbb6627156f7a3f78b1c37c9730d7c4e79 :
+-- https://github.com/nbogie/ra-haskell/commit/77c16fdbb6627156f7a3f78b1c37c9730d7c4e79
+--
 -- TODO: problem, we have more than two categories of tile, namely
 -- 
 -- * _/ Storeable    - everything that can be held in a player hand. Not Ra or Disaster.
