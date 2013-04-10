@@ -261,13 +261,13 @@ initPlayers n = map (\ss -> Player (ss, []) [] 10) sunSets
   where sunSets = head $ filter ((==n) . length) startingSuns 
 
 initBoard :: Int -> [Tile] -> Board
-initBoard numPlayers ts = Board 
+initBoard nPlayers ts = Board 
              { raCount = 0
              , block = []
              , boardSun = Sun 1
              , epoch = Epoch 1
              , deck = ts
-             , players = M.fromList $ zip (playerCycleFromTo 0 numPlayers) (initPlayers numPlayers) 
+             , players = M.fromList $ zip (playerCycleFromTo 0 nPlayers) (initPlayers nPlayers) 
              , currentPlayerId = 0
              } 
 
