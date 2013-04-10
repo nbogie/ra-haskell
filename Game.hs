@@ -397,7 +397,7 @@ scoreMonuments ts = ScMonuments scoreForDifferents scoreForIdenticals
 
 endEpoch :: Board -> (Bool, Board)
 endEpoch b = case epoch b of
-  Epoch 3 -> (True, scoreEpoch $ b { raCount = 0, block = [] })
+  Epoch 3 -> (True, scoreEpoch $ b { block = [] })
   _other  -> (False, advanceEpoch $ forAllPlayers removeTempTiles $ scoreEpoch $ forAllPlayers faceSunsUp $ b { block = [], raCount = 0 })
     where faceSunsUp p = modSuns turnSunsFaceUp p
 
@@ -431,6 +431,8 @@ readInt str = case reads str of
 
 type PlayerNum = Int
 
+-- This turns out to be more brittle than simply maintaining a flag within the board,
+-- as it relies on endEpoch not clearing the raCount, for example, on ending Epoch 3.
 isGameOver :: Board -> Bool
 isGameOver b = deckEmpty b || 
  (epoch b == Epoch 3 && (noOneLeftInPlay b || raTrackFull b))
