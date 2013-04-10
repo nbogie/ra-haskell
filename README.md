@@ -24,7 +24,9 @@ Usage:
 ======
 
 To run the game with n players, invoke with -p n  E.g. A 3 player game can be started as follows:
+
     runhaskell GUI.hs -p 3 
 
 An event-heavy tileset, meant for development not balanced play, can be enabled with the -d switch, e.g. 
+
     runhaskell GUI.hs -p 4 -d
