@@ -185,7 +185,7 @@ getDisasterResolutionsIO pi gainedTiles b = do
    getRes :: [Tile] -> [DisasterType] -> IO [DisasterResolution]
    getRes _pts [] = return []
    getRes pts dts = do
-     chosenDt <- pickOneFromMenuIO toCharAndShow pi dts "Pick a disaster to resolve: "
+     chosenDt <- pickOneFromMenuIO show pi dts "Pick a disaster to resolve: "
      discards <- pickDiscardsForDisasterIO pi pts chosenDt
      playMsg pi $ "Discarded "++show discards
      let pts' = pts \\ discards
@@ -202,8 +202,8 @@ pickDiscardsForDisasterIO pi ts dis = pickDis dis
             where allz t = filter (==t) relevant
   pickDis _ | length relevant <= 2 = return $ take 2 relevant -- no choice
             | otherwise            = do  -- guaranteed at least two choices
-    d1 <- pickOneFromMenuIO toCharAndShow pi (sort relevant)           "Pick first discard"
-    d2 <- pickOneFromMenuIO toCharAndShow pi (sort (relevant \\ [d1])) "Pick second discard"
+    d1 <- pickOneFromMenuIO show pi (sort relevant)           "Pick first discard"
+    d2 <- pickOneFromMenuIO show pi (sort (relevant \\ [d1])) "Pick second discard"
     return [d1,d2]
 
 
