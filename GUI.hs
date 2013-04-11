@@ -139,7 +139,7 @@ runAuctionIO reason b = do
 
 getBidChoiceIO :: Bool -> Board -> PlayerNum -> Maybe (Sun, PlayerNum) -> IO (Maybe (Sun, PlayerNum))
 getBidChoiceIO isMandatory b pi currBid = do
-     let possibleBids = map sunValue $ filter ( > maybe (Sun 0) fst currBid) $ faceUpSuns $ handOf pi b
+     let possibleBids = sort $ map sunValue $ filter ( > maybe (Sun 0) fst currBid) $ faceUpSuns $ handOf pi b
      let passStr = if isMandatory then ".  You must bid as you called Ra: " else " or hit return to pass: "
      playMsg pi $ "Enter bid: " ++ show possibleBids ++ passStr
      l <- getLine

@@ -192,7 +192,7 @@ blockToSummaryString  = unlines . map show . sort . map (head &&& length) . grou
 blockToString :: Block -> String
 blockToString = padWith '.' 8 . map toChar
 playerToString ::(PlayerNum, Player) -> String
-playerToString (i, p) = "Player: " ++ show i ++ ": (" ++ show (score p) ++ "): " ++ show (suns p) ++ ", " ++ ts
+playerToString (i, p) = "Player: " ++ show i ++ ": (" ++ show (score p) ++ "): " ++ show (sunsSorted p) ++ ", " ++ ts
   where ts            = tilesToString . tiles $ p
         tilesToString = map toChar . concat . group . sort 
 
@@ -231,6 +231,10 @@ data Player = Player { suns :: ([Sun], [Sun])
                      , tiles :: [Tile]
                      , score :: Int
                      } deriving (Show, Eq)
+
+sunsSorted :: Player -> ([Sun], [Sun])
+sunsSorted p = let (ups, downs) = suns p 
+               in (sort ups, sort downs)
 
 data Board = Board { raCount :: Int
                    , block :: Block
