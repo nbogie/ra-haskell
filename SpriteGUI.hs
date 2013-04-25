@@ -178,9 +178,11 @@ data GS = GS { frame :: Int
              } deriving (Show, Eq)
 
 drawBlock ::  GS -> Picture
-drawBlock gs = drawTextLines black (0,0) [blockToString $ block $ raBoard gs]
--- TODO: draw lightened placeholder tiles (or translucent), when not possessed
+drawBlock gs = drawSpritesAt posns sprs 8
+  where posns = [(fromIntegral x,0) | x <- [0.. length sprs]]
+        sprs = map ((`findSpriteOrError` sprites gs) . nameOfSprite) $ block $ raBoard gs
 
+-- TODO: draw lightened placeholder tiles (or translucent), when not possessed
 drawStore ::  GS -> Picture
 drawStore gs = drawSpritesAt posns sprs 8
   where posns = [(x,y) | y <- [1,0], x <- [0.. fromIntegral rowWidth - 1]]
