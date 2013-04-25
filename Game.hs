@@ -269,6 +269,7 @@ sunsSorted p = let (ups, downs) = suns p
                in (sort ups, sort downs)
 
 data Board = Board { raCount :: Int
+                   , gameMode :: GameMode
                    , block :: Block
                    , boardSun :: Sun
                    , epoch :: Epoch
@@ -299,6 +300,7 @@ initPlayers n = map (\ss -> Player (ss, []) [] 10) sunSets
 initBoard :: Int -> [Tile] -> Board
 initBoard nPlayers ts = Board 
              { raCount = 0
+             , gameMode = ChooseAction
              , block = []
              , boardSun = Sun 1
              , epoch = Epoch 1
@@ -565,7 +567,36 @@ currentPlayerCanUseGod board = playerHasGodTile && blockHasGoddableTiles
      playerHasGodTile      = elem God . tiles . active $ board
      blockHasGoddableTiles = any isGoddable . block $ board
 
+data Action = DrawTile
+            | CallRa AuctionReason 
+            | UseGod
+            | PickTileToGod
+            | UseAnotherGod
+            | FinishWithGods
+            | ChooseDisasterToResolve
+            | ChooseTilesToDiscard
+            | BidASun
+            | Pass deriving (Show, Eq)
 
+data GameMode  = ChooseAction
+               | InAuction
+               | UsingGod
+               | AfterUseGod
+               | ResolveDisasters1
+               | ResolveDisasters2 deriving (Show, Eq)
+
+legalActions :: Board -> GameMode ->  [Action]
+legalActions b ChooseAction      = [CallRa reason] ++ useGodM ++ drawTileM
+  where
+     reason    = if blockFull b then BlockFull else RaCalledVoluntarily
+     useGodM   = if currentPlayerCanUseGod b then [UseGod] else []
+     drawTileM = if not (blockFull b)        then [DrawTile] else []
+legalActions b UsingGod          = [PickTileToGod]
+legalActions b AfterUseGod       = if currentPlayerCanUseGod b then [UseAnotherGod, FinishWithGods] else []
+legalActions b ResolveDisasters1 = [ChooseDisasterToResolve]
+legalActions b ResolveDisasters2 = [ChooseTilesToDiscard] -- TODO: no action if auto-resolveable
+legalActions b InAuction         = if auctionPlayerHasLegalBid b then [BidASun, Pass] else []
+  where auctionPlayerHasLegalBid = error "NOT IMPLEMENTED: auctionPlayerHasLegalBid"
 
 
 testScoreMonuments ::  Test
