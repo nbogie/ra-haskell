@@ -1,10 +1,8 @@
 module Main where
 import Data.Array
-import Data.List (nub, foldl', sort)
-import Data.List(find,(\\),sort)
+import Data.List(find)
 import Data.Map (Map)
 import Data.Maybe(fromMaybe,mapMaybe)
-import Data.Time.Clock -- for naming new sprites
 import Debug.Trace
 import Graphics.Gloss
 import Graphics.Gloss.Interface.IO.Game
@@ -13,6 +11,7 @@ import System.Environment(getArgs)
 import qualified Data.Map as M
 
 import Game
+main ::  IO ()
 main = do
   args <- getArgs
   let usage = "Usage: prog -p <NumPlayers> [-d] (where NumPlayers is in [2..5])"
@@ -27,12 +26,12 @@ main = do
 
   _counts <- tests
   contents <- readFile "sprites.dat"
-  let sprites =  readCharsMap (lines contents)
+  let sprs =  readCharsMap (lines contents)
   board <- fmap (initBoard nPlayers) (initDeck tileSet)
-  guimain board sprites
+  guimain board sprs
 
 colorFor :: Int -> Color
-colorFor i = colrs !! (i `mod` (length colrs))
+colorFor i = colrs !! (i `mod` length colrs)
   where colrs = [black, white, green, yellow, red, blue, orange
                 , chartreuse, azure, black, aquamarine, rose
                 , cyan, magenta]
@@ -40,7 +39,7 @@ type MySprite = (String, GridArray)
 type GridArray = Array (Int, Int) Int
 
 guimain :: Board -> M.Map String MySprite -> IO ()
-guimain board sprites = do
+guimain board sprs = 
   playIO
           (InWindow "Ra - Sprite GUI" --name of the window
             (900,800) -- initial size of the window
@@ -48,22 +47,26 @@ guimain board sprites = do
           )
           backgroundColor   -- background colour
           30 -- number of simulation steps to take for each second of real time
-          (initGS board sprites) -- the initial world
+          (initGS board sprs) -- the initial world
           (return . drawState) -- A function to convert the world into a picture
           handleInput -- A function to handle input events
           (\i w -> return $ updateGame i w)
 
-updateGame x gs = incCount gs
-  where incCount gs = gs { frame = frame gs + 1 }
+updateGame :: Float  -> GS -> GS
+updateGame _step gs = gs { frame = frame gs + 1 }
 
+initGS ::  Board -> SpriteMap -> GS
 initGS b sprs = GS 
    { raBoard = b
    , frame = 0
    , cursorPos = (0,0)
    , curSprite = initSprite
    , sprites = sprs}
+
+initSprite ::  (String, Array (Int, Int) Int)
 initSprite = ("untitled", array ((0,0), (7,7)) [((x,y),0) | x<- [0..7], y <- [0..7]])
 
+backgroundColor ::  Color
 backgroundColor = colorSea 
 
 
@@ -83,50 +86,61 @@ inpFor Pass                    = InKey 'p'
 
 handleInput :: Event -> GS -> IO GS
 handleInput e gs = case chosenActionM of
-  Just a -> return $ traceShow a $ applyAction a gs
-  Nothing -> return $ gs
+  Just (a, _) -> return $ traceShow a $ applyAction a gs
+  Nothing -> return gs
   where 
    chosenActionM = find (eventMatches e . snd) (inputsForLegalAcs gs)
 
+inputsForLegalAcs ::  GS -> [(Action, Input)]
 inputsForLegalAcs gs = zip legalAcs (map inpFor legalAcs)
  where
    mode = gameMode $ raBoard gs
    legalAcs = legalActions (raBoard gs) mode
 
-eventMatches (EventKey (Char cE) Down mods _) (InKey cI) = cE == cI
+eventMatches ::  Event -> Input -> Bool
+eventMatches (EventKey (Char cE) Down _mods _) (InKey cI) = cE == cI
 eventMatches _ _ = False
 
 
-applyAction a gs = gs
+applyAction ::  Action -> GS -> GS
+applyAction ac  gs = gs { raBoard = newBoard } 
+  where newBoard = apply ac $ raBoard gs 
 
-handleCursor k mods gs  = 
+handleCursor ::  Key -> t -> GS -> IO GS
+handleCursor k _mods gs  = 
   case k of
-  (SpecialKey KeyDown)  -> changeCursor CDown
-  (SpecialKey KeyUp)    -> changeCursor CUp
-  (SpecialKey KeyLeft)  -> changeCursor CLeft
-  (SpecialKey KeyRight) -> changeCursor CRight
+  (SpecialKey KeyDown)  -> changeCursor CDown gs
+  (SpecialKey KeyUp)    -> changeCursor CUp gs
+  (SpecialKey KeyLeft)  -> changeCursor CLeft gs
+  (SpecialKey KeyRight) -> changeCursor CRight gs
+  _                     -> return gs
 
 changeCursor :: CursorDir -> GS -> IO GS
 changeCursor d  gs = return $ gs { cursorPos = capPos ((0,0), (7,7)) $ changePos d $ cursorPos gs } 
 
+capPos :: (Ord t1, Ord t) => ((t, t1), (t, t1)) -> (t, t1) -> (t, t1)
 capPos ((x0,y0), (x1,y1)) (x,y) = (cap x x0 x1, cap y y0 y1)
   where
     cap n low hi | n < low = low
                  | n > hi  = hi
                  | otherwise = n
+
+drawSuns ::  GS -> Picture
 drawSuns gs = drawSpritesAt posns sprs spritesSize
   where 
    sprs = fuSprites ++ fdSprites
-   fuSprites = map ((`findSpriteOrError` (sprites gs)) . nameOfSprite) fuSuns
+   fuSprites = map ((`findSpriteOrError` sprites gs) . nameOfSprite) fuSuns
    fdSprites = replicate (length fdSuns) (findSpriteOrError "Sun FaceDown" (sprites gs))
    (fuSuns, fdSuns) = suns $ active $ raBoard gs
    spritesSize = 8
    posns = map (\x -> (x,0)) [0..]
 
-findSpriteOrError k smap = case M.lookup k smap of
-  Just s -> s
-  Nothing -> error $ "ERROR: No sprite by name "++k
+findSpriteOrError ::  String -> Map String a -> a
+findSpriteOrError k smap = fromMaybe 
+                             (error $ "ERROR: No sprite by name "++k)
+                             (M.lookup k smap)
 
+drawTile ::  GS -> GS
 drawTile gs = gs { raBoard = newBoard
                  , curSprite = fromMaybe cSprite newSprite } 
   where newBoard = (raBoard gs) { deck = newDeck }
@@ -143,10 +157,12 @@ drawTile gs = gs { raBoard = newBoard
 spriteForTile :: SpriteMap -> Tile -> Maybe MySprite
 spriteForTile smap t = M.lookup (nameOfSprite t) smap
 
+boardConstraints ::  ((Integer, Integer), (Integer, Integer))
 boardConstraints = ((0,0), (7,7))
 
 data CursorDir = CLeft | CRight | CDown | CUp deriving (Eq, Show)
 
+changePos ::  (Num t1, Num t) => CursorDir -> (t, t1) -> (t, t1)
 changePos CLeft (x,y)  = (x-1, y)
 changePos CRight (x,y) = (x+1, y)
 changePos CDown (x,y)  = (x, y-1)
@@ -161,18 +177,22 @@ data GS = GS { frame :: Int
              , sprites :: SpriteMap
              } deriving (Show, Eq)
 
+drawBlock ::  GS -> Picture
+drawBlock gs = drawTextLines black (0,0) [blockToString $ block $ raBoard gs]
 -- TODO: draw lightened placeholder tiles (or translucent), when not possessed
-drawStore :: GS -> Picture
+
+drawStore ::  GS -> Picture
 drawStore gs = drawSpritesAt posns sprs 8
   where posns = [(x,y) | y <- [1,0], x <- [0.. fromIntegral rowWidth - 1]]
         rowWidth = length (head boardLayout)
-        sprs = map ((`findSpriteOrError` (sprites gs)) . nameOfSprite) $ concat boardLayout
+        sprs = map ((`findSpriteOrError` sprites gs) . nameOfSprite) $ concat boardLayout
 
 drawState :: GS -> Picture
-drawState gs = Pictures $ 
-   [ translate (200)  (100) $ drawSprite 9 (curSprite gs)
+drawState gs = Pictures 
+   [ translate (200)  (100)  $ drawSprite 9 (curSprite gs)
+   , translate (-100) (0)    $ drawBlock gs
    , translate (100)  (-100) $ drawSuns gs
-   , translate (-300)  (-300) $ drawStore gs
+   , translate (-300) (-300) $ drawStore gs
    ,  drawTextLines colorSeaGlass (-300,0) messages]
    
   where 
@@ -184,65 +204,69 @@ drawState gs = Pictures $
                , show $ inputsForLegalAcs gs
                ]
 
-frameAsFloat gs = fromIntegral $ frame gs
-                             
+vecadd ::  (Num t1, Num t) => (t, t1) -> (t, t1) -> (t, t1)
 vecadd (x,y) (a,b) = (x+a, y+b)
 
 drawSpritesAt ::  [(Float, Float)] -> [MySprite] -> Int -> Picture
 drawSpritesAt posns sprs sz = Pictures $ map (\((x,y),s) -> translate (x*sprSize + 5) (y*sprSize + 5) $ drawSprite sz s) $ zip posns sprs
-  where sprSize = (fromIntegral sz)*8
+  where sprSize = fromIntegral sz * 8
 
 drawSprite :: Int -> MySprite -> Picture
-drawSprite size (sprName, spr) = 
-  Pictures $ [cubeAt ((x-4,y-4), c) size | x <- [0..7], y <-[0..7], let c = spr ! (x,y)]
+drawSprite size (_sprName, spr) = 
+  Pictures [cubeAt ((x-4,y-4), c) size | x <- [0..7], y <-[0..7], let c = spr ! (x,y)]
 
+cubeAt :: ((Int, Int), Int) -> Int -> Picture
 cubeAt ((x,y),cIx) size = case cIx of
       0 -> Pictures []  
       _ -> translate (f x) (f y) $ cubeSolid c edgeLen
             where c = colorFor cIx
-                  f n = fromIntegral $ size * (fromIntegral n)
-                  edgeLen = round $ (fromIntegral size) * 0.9
+                  f n = fromIntegral $ size * fromIntegral n
+                  edgeLen = round $ fromIntegral size * (0.9::Float)
 tileWidth :: Int
 tileWidth = 20
 
+cubeSolid ::  Color -> Int -> Picture
 cubeSolid c w =  Rotate 0 $ Pictures [Color black $ rectangleSolid (f w) (f w), Color c $ rectangleSolid (f w2) (f w2)]
   where f  = fromIntegral
         w2 | w < 8 = w - 1
            | otherwise = w - 4
 
-drawCursor (x,y) sz = Color yellow $ translate (m x) (m y) $ rectangleWire (fi $ sz) (fi $ sz)
+drawCursor ::  Integral b => (b, b) -> b -> Picture
+drawCursor (x,y) sz = Color yellow $ translate (m x) (m y) $ rectangleWire (fi sz) (fi sz)
   where m = fi .  (sz *)
         fi = fromIntegral
 
+colorSea ::  Color
 colorSea      = makeColor8 46 90 107 255
+colorSeaGlass ::  Color
 colorSeaGlass = makeColor8 163 204 188 255
-colorForFish _fc = colorSeaGlass
 
 drawTextLines :: Color -> (Float, Float) -> [String] -> Picture
 drawTextLines c (x,y) ls = Translate x y $  Color c $
                    Pictures $ map drawLine $ zip ls [1..]
   where drawLine (l,row) = textAt 10 (row*(-20)) l
-        textAt x y content = Translate x y (Scale 0.12 0.12 (Text content))
+
+textAt ::  Float -> Float -> String -> Picture
+textAt x y content = Translate x y (Scale 0.12 0.12 (Text content))
 
 textWithSprites :: SpriteMap -> String -> Picture
 textWithSprites sprMap msg = drawSpritesAt posns sprs 8
   where
     posns = zip [0..] (cycle [0])
-    sprs = mapMaybe ((flip M.lookup sprMap) . (:"")) msg
+    sprs = mapMaybe ((`M.lookup` sprMap) . (:"")) msg
 
 readCharsMap :: [String] -> M.Map String MySprite
 readCharsMap = M.fromList . readChars
 readChars :: [String] -> [(String, MySprite)]
 readChars [] = []
 readChars ls = thing : readChars remainder
-  where (thing, remainder) = eat ls
-        eat str = (exName $ readChar $ take 9 ls, drop 9 ls)
+  where (thing, remainder) = (exName $ readChar $ take 9 ls, drop 9 ls)
         exName (n,r) = (n, (n,r))
 
 readChar :: [String] -> MySprite
 readChar ls = case ls of
   (name:rest) -> (name, toArr $ map readCharLine rest)
-  other       -> error $ "bad char data" ++ (unlines other)
+  other       -> error $ "bad char data" ++ unlines other
   where
     toArr = array ((0,0), (7,7)) . zip pts . concat 
     pts = [(x,y) | y <- [7,6..0], x <- [0..7]]
@@ -256,14 +280,17 @@ writeSprites sprMap = do
   writeFile "sprites.dat" content
   
 writeSprite :: (String, MySprite) -> String
-writeSprite (name, (_, ar)) = unlines $ name : write ar
+writeSprite (name, (_, arry)) = unlines $ name : write arry
    where
    write :: GridArray -> [String]
    write ar = wrapAt 8 [head $ show c | y <- [7,6..0], x <- [0..7], let c = ar ! (x,y)]
-   wrapAt n [] = []
+   wrapAt _ [] = []
    wrapAt n xs = take n xs : wrapAt n (drop n xs)
 
+spriteName ::  (t, t1) -> t
 spriteName (n,_) = n
+
+spriteArray ::  (t, t1) -> t1
 spriteArray (_, ar) = ar
 
 class HasSpriteName a where
@@ -276,7 +303,7 @@ instance HasSpriteName Tile where
 instance HasSpriteName NonStoreableTile where
   nameOfSprite = show
 instance HasSpriteName StoreableTile where
-  nameOfSprite st = show st
+  nameOfSprite = show
 instance HasSpriteName Sun where
   nameOfSprite (Sun x) = "Sun " ++ show x
 

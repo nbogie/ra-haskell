@@ -585,16 +585,42 @@ data GameMode  = ChooseAction
                | ResolveDisasters1
                | ResolveDisasters2 deriving (Show, Eq)
 
+
+toMode :: Board -> GameMode -> Board
+toMode b m = b { gameMode = m }
+apply :: Action -> Board -> Board
+apply DrawTile board = 
+  if deckEmpty board 
+  then 
+    error "END: no more tiles"
+  else 
+    let (tile:rest) = deck board
+    in trace ("Tile drawn: " ++ showName tile) $
+    case tile of
+      NonStoreable Ra ->
+         let newBoard = incRaCount $ board { deck = rest }
+         in if raTrackFull newBoard
+              then 
+                trace "Ra Track Full - Immediate End Of Epoch"
+                toMode (snd . endEpoch . advancePlayer $ newBoard) ChooseAction
+              else 
+                toMode newBoard InAuction
+      _ -> 
+         toMode (advancePlayer newBoard) ChooseAction
+           where newBoard = board { deck = rest, block = tile : block board } 
+
+apply _ board = board
+
 legalActions :: Board -> GameMode ->  [Action]
 legalActions b ChooseAction      = [CallRa reason] ++ useGodM ++ drawTileM
   where
      reason    = if blockFull b then BlockFull else RaCalledVoluntarily
-     useGodM   = if currentPlayerCanUseGod b then [UseGod] else []
-     drawTileM = if not (blockFull b)        then [DrawTile] else []
-legalActions b UsingGod          = [PickTileToGod]
+     useGodM   = [UseGod   | currentPlayerCanUseGod b]
+     drawTileM = [DrawTile | not (blockFull b)]
+legalActions _b UsingGod          = [PickTileToGod]
 legalActions b AfterUseGod       = if currentPlayerCanUseGod b then [UseAnotherGod, FinishWithGods] else []
-legalActions b ResolveDisasters1 = [ChooseDisasterToResolve]
-legalActions b ResolveDisasters2 = [ChooseTilesToDiscard] -- TODO: no action if auto-resolveable
+legalActions _b ResolveDisasters1 = [ChooseDisasterToResolve]
+legalActions _b ResolveDisasters2 = [ChooseTilesToDiscard] -- TODO: no action if auto-resolveable
 legalActions b InAuction         = if auctionPlayerHasLegalBid b then [BidASun, Pass] else []
   where auctionPlayerHasLegalBid = error "NOT IMPLEMENTED: auctionPlayerHasLegalBid"
 
