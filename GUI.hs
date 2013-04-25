@@ -252,3 +252,14 @@ pickOneFromMenuIO showFn pi items prompt = do
       itemIfValid n = fmap snd $ find ((==n) . fst) mapping
       mapping = zip [0..] items
 
+
+boardLayout :: [[StoreableTile]]
+boardLayout = [ topMons ++ topCivs ++ [Pharaoh] ++ [God] ++ [Flood]
+              , lowMons ++ lowCivs ++ [Gold] ++ [Nile]
+              ]
+  where 
+    (topMons, lowMons) = splitCounted 4 mons
+    (topCivs, lowCivs) = splitCounted 2 civs
+    mons = map Monument allMonumentTypes
+    civs = map Civilization allCivilizationTypes
+    splitCounted n xs = (take n xs, drop n xs)
