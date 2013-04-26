@@ -78,7 +78,7 @@ inpFor DrawTile                = InKey 'd'
 inpFor (CallRa _)              = InKey 'r'
 inpFor UseGod                  = InKey 'g'
 inpFor PickTileToGod           = CursorSelection CSGoddableTiles
-inpFor UseAnotherGod           = InKey 'y'
+inpFor AcUseAnotherGod           = InKey 'y'
 inpFor FinishWithGods          = InKey 'n'
 inpFor ChooseDisasterToResolve = CursorSelection CSDisasters
 inpFor ChooseTilesToDiscard    = CursorSelection CSDiscardables
@@ -190,23 +190,26 @@ drawStore gs = drawSpritesAt posns sprs 8
         rowWidth = length (head boardLayout)
         sprs = map sname ts
         sname (t,True) = findSpriteOrError (nameOfSprite t) (sprites gs)
-        sname (_t,False) = findSpriteOrError "Blank" (sprites gs) 
+        sname (_t,False) = findSpriteOrError "PlaceHolder" (sprites gs) 
         ts = zip possibles $ map (`elem` (tiles $ active $ raBoard gs)) possibles
         possibles = concat boardLayout
 
 drawRaTrack :: GS -> Picture
 drawRaTrack gs = drawSpritesAt posns sprs 8
   where 
-    posns = [(x, 0) | x <- [0 .. rc ] ]
-    sprs = replicate rc (findSpriteOrError "Ra" $sprites gs)
+    posns = [(x, 0) | x <- [0 .. maxRC ] ]
+    sprs = raSprs ++ placeHolderSprs
+    raSprs = replicate rc (findSpriteOrError "Ra" $sprites gs)
+    placeHolderSprs = replicate (maxRC - rc) (findSpriteOrError "PlaceHolder" $sprites gs)
     rc = raCount (raBoard gs)
+    maxRC = raCountMax (raBoard gs)
 
 
 drawState :: GS -> Picture
 drawState gs = Pictures 
    [ translate (200)  (100)  $ drawSprite 9 (curSprite gs)
-   , translate (-100) (100)  $ drawRaTrack gs
-   , translate (-100) (0)    $ drawBlock gs
+   , translate (-300) (100)  $ drawRaTrack gs
+   , translate (-200) (0)    $ drawBlock gs
    , translate (100)  (-150) $ drawSuns gs
    , translate (-300) (-300) $ drawStore gs
    , translate (-400) (-30) $ drawTextLines colorSeaGlass messages]
