@@ -209,15 +209,14 @@ drawState gs = Pictures
    , translate (-100) (0)    $ drawBlock gs
    , translate (100)  (-150) $ drawSuns gs
    , translate (-300) (-300) $ drawStore gs
-   ,  drawTextLines colorSeaGlass (-300,50) messages]
-   
+   , translate (-400) (-30) $ drawTextLines colorSeaGlass messages]
   where 
     i = frame gs
     messages = [ "Ra Sprite GUI"
-               , "Frame: " ++ show i
                , "Game Mode: " ++ show (gameMode $ raBoard gs)
-               , show $ deck $ raBoard gs
                , show $ inputsForLegalAcs gs
+               -- , "Deck: " ++ show $ deck $ raBoard gs
+               , "Frame: " ++ show i
                ]
 
 vecadd ::  (Num t1, Num t) => (t, t1) -> (t, t1) -> (t, t1)
@@ -232,23 +231,26 @@ drawSpritesAt posns sprs sz =
       fi = fromIntegral
 
 drawSprite :: Int -> MySprite -> Picture
-drawSprite size (_sprName, spr) = 
-  Pictures $ [ cubeAt ((x-4,y-4), c) size | x <- [0..7], y <-[0..7], let c = spr ! (x,y) ] 
-             -- ++ [marker]
-    where marker = Color green $ rectangleSolid 1 1
+drawSprite cubeSize (_sprName, spr) = 
+  Pictures $ [ translate (-halfWid) (-halfWid) $ cubeAt ((x,y), c) cubeSize 
+             | x <- [0..7], y <-[0..7], let c = spr ! (x,y) ] 
+             -- ++ [_border, _marker]
+    where
+       _border = Color green $ rectangleWire wholeSpriteSize wholeSpriteSize
+       _marker = Color green $ rectangleSolid 1 1
+       halfWid = wholeSpriteSize / 2
+       wholeSpriteSize = 8 * fromIntegral cubeSize
 
 cubeAt :: ((Int, Int), Int) -> Int -> Picture
 cubeAt ((x,y),cIx) size = case cIx of
       0 -> Pictures []  
       _ -> translate (f x) (f y) $ cubeSolid c edgeLen
             where c = colorFor cIx
-                  f n = fromIntegral $ size * fromIntegral n
+                  f n = fromIntegral size * ((0.5::Float) + fromIntegral n)
                   edgeLen = round $ fromIntegral size * (0.9::Float)
-tileWidth :: Int
-tileWidth = 20
 
 cubeSolid ::  Color -> Int -> Picture
-cubeSolid c w =  Rotate 0 $ Pictures 
+cubeSolid c w =  Pictures 
     [ Color black $ rectangleSolid (f w) (f w)
     , Color c $ rectangleSolid (f w2) (f w2) 
     ]
@@ -266,8 +268,8 @@ colorSea      = makeColor8 46 90 107 255
 colorSeaGlass ::  Color
 colorSeaGlass = makeColor8 163 204 188 255
 
-drawTextLines :: Color -> (Float, Float) -> [String] -> Picture
-drawTextLines c (x,y) ls = Translate x y $  Color c $
+drawTextLines :: Color -> [String] -> Picture
+drawTextLines c ls = Color c $
                    Pictures $ map drawLine $ zip ls [1..]
   where drawLine (l,row) = textAt 10 (row*(-20)) l
 
