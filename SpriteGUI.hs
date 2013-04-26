@@ -180,13 +180,13 @@ data GS = GS { frame :: Int
 
 drawBlock ::  GS -> Picture
 drawBlock gs = drawSpritesAt posns sprs 8
-  where posns = [(fromIntegral x,0) | x <- [0.. length sprs]]
+  where posns = [(x,0) | x <- [0.. length sprs]]
         sprs = map ((`findSpriteOrError` sprites gs) . nameOfSprite) $ block $ raBoard gs
 
 -- TODO: draw lightened placeholder tiles (or translucent), when not possessed
 drawStore ::  GS -> Picture
 drawStore gs = drawSpritesAt posns sprs 8
-  where posns = [(x,y) | y <- [1,0], x <- [0.. fromIntegral rowWidth - 1]]
+  where posns = [(x,y) | y <- [1,0], x <- [0.. rowWidth - 1]]
         rowWidth = length (head boardLayout)
         sprs = map sname ts
         sname (t,True) = findSpriteOrError (nameOfSprite t) (sprites gs)
@@ -197,7 +197,7 @@ drawStore gs = drawSpritesAt posns sprs 8
 drawRaTrack :: GS -> Picture
 drawRaTrack gs = drawSpritesAt posns sprs 8
   where 
-    posns = [(fromIntegral x, 0) | x <- [0 .. rc ] ]
+    posns = [(x, 0) | x <- [0 .. rc ] ]
     sprs = replicate rc (findSpriteOrError "Ra" $sprites gs)
     rc = raCount (raBoard gs)
 
@@ -223,13 +223,19 @@ drawState gs = Pictures
 vecadd ::  (Num t1, Num t) => (t, t1) -> (t, t1) -> (t, t1)
 vecadd (x,y) (a,b) = (x+a, y+b)
 
-drawSpritesAt ::  [(Float, Float)] -> [MySprite] -> Int -> Picture
-drawSpritesAt posns sprs sz = Pictures $ map (\((x,y),s) -> translate (x*sprSize + 5) (y*sprSize + 5) $ drawSprite sz s) $ zip posns sprs
-  where sprSize = fromIntegral sz * 8
+drawSpritesAt ::  [(Int, Int)] -> [MySprite] -> Int -> Picture
+drawSpritesAt posns sprs sz = 
+  Pictures $ map (\((x,y),s) -> 
+    translate ((fi x) * sprSize + 5) ((fi y) * sprSize + 5) $ drawSprite sz s) $ zip posns sprs
+    where 
+      sprSize = fromIntegral sz * 8
+      fi = fromIntegral
 
 drawSprite :: Int -> MySprite -> Picture
 drawSprite size (_sprName, spr) = 
-  Pictures [cubeAt ((x-4,y-4), c) size | x <- [0..7], y <-[0..7], let c = spr ! (x,y)]
+  Pictures $ [ cubeAt ((x-4,y-4), c) size | x <- [0..7], y <-[0..7], let c = spr ! (x,y) ] 
+             -- ++ [marker]
+    where marker = Color green $ rectangleSolid 1 1
 
 cubeAt :: ((Int, Int), Int) -> Int -> Picture
 cubeAt ((x,y),cIx) size = case cIx of
@@ -242,7 +248,10 @@ tileWidth :: Int
 tileWidth = 20
 
 cubeSolid ::  Color -> Int -> Picture
-cubeSolid c w =  Rotate 0 $ Pictures [Color black $ rectangleSolid (f w) (f w), Color c $ rectangleSolid (f w2) (f w2)]
+cubeSolid c w =  Rotate 0 $ Pictures 
+    [ Color black $ rectangleSolid (f w) (f w)
+    , Color c $ rectangleSolid (f w2) (f w2) 
+    ]
   where f  = fromIntegral
         w2 | w < 8 = w - 1
            | otherwise = w - 4
