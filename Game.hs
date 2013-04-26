@@ -230,7 +230,7 @@ playerToString (i, p) = "Player: " ++ show i ++ ": (" ++ show (score p) ++ "): "
         tilesToString = map toChar . concat . group . sort 
 
 raTrackToString ::  Board -> String
-raTrackToString b = padWith '.' (raCountMax (numPlayers b)) $ replicate (raCount b) 'R'
+raTrackToString b = padWith '.' (raCountMax b) $ replicate (raCount b) 'R'
 
 padWith ::  a -> Int -> [a] -> [a]
 padWith c n s | length s >= n = s
@@ -239,12 +239,15 @@ padWith c n s | length s >= n = s
 
 
 -- given a number of players, report the max number of spaces in ra track
-raCountMax :: Int -> Int
-raCountMax 2 = 6
-raCountMax 3 = 8
-raCountMax 4 = 9
-raCountMax 5 = 10
-raCountMax other = error $ "BUG in raCountMax: illegal number of players: " ++ show other
+raCountMax :: Board -> Int
+raCountMax = raCountMaxFor . numPlayers
+
+raCountMaxFor :: Int -> Int
+raCountMaxFor 2 = 6
+raCountMaxFor 3 = 8
+raCountMaxFor 4 = 9
+raCountMaxFor 5 = 10
+raCountMaxFor other = error $ "BUG in raCountMaxFor: illegal number of players: " ++ show other
 
 boardToString :: Board -> String
 boardToString b = unlines $ [ 
@@ -448,7 +451,7 @@ initDeck = shuffle
 
 raTrackFull :: Board -> Bool
 raTrackFull b = (>=mx) . raCount $ b
-  where mx = raCountMax $ numPlayers b
+  where mx = raCountMax b
 
 incRaCount :: Board -> Board
 incRaCount ( b@Board{ raCount = rc }) = b { raCount = rc + 1 }
@@ -578,7 +581,7 @@ data Action = DrawTile
             | CallRa AuctionReason 
             | UseGod
             | PickTileToGod
-            | UseAnotherGod
+            | AcUseAnotherGod
             | FinishWithGods
             | ChooseDisasterToResolve
             | ChooseTilesToDiscard
@@ -695,7 +698,7 @@ legalActions b ChooseAction      = [CallRa reason] ++ useGodM ++ drawTileM
      useGodM   = [UseGod   | currentPlayerCanUseGod b]
      drawTileM = [DrawTile | not (blockFull b)]
 legalActions _b UsingGod          = [PickTileToGod]
-legalActions  b AfterUseGod       = if currentPlayerCanUseGod b then [UseAnotherGod, FinishWithGods] else []
+legalActions  b AfterUseGod       = if currentPlayerCanUseGod b then [AcUseAnotherGod, FinishWithGods] else []
 legalActions _b ResolveDisasters1 = [ChooseDisasterToResolve]
 legalActions _b ResolveDisasters2 = [ChooseTilesToDiscard] -- TODO: no action if auto-resolveable
 legalActions _b (InAuction _ [] _curBidM) = error "InAuction with no players!"
