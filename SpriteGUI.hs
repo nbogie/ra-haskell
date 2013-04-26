@@ -217,9 +217,9 @@ drawState gs = Pictures
     i = frame gs
     messages = [ "Ra Sprite GUI"
                , "Game Mode: " ++ show (gameMode $ raBoard gs)
-               , show $ inputsForLegalAcs gs
-               -- , "Deck: " ++ show $ deck $ raBoard gs
-               , "Frame: " ++ show i
+               ] ++ map show (inputsForLegalAcs gs) ++
+               [-- , "Deck: " ++ show $ deck $ raBoard gs
+                "Frame: " ++ show i
                ]
 
 vecadd ::  (Num t1, Num t) => (t, t1) -> (t, t1) -> (t, t1)
@@ -235,7 +235,7 @@ drawSpritesAt posns sprs sz =
 
 drawSprite :: Int -> MySprite -> Picture
 drawSprite cubeSize (_sprName, spr) = 
-  Pictures $ [ translate (-halfWid) (-halfWid) $ cubeAt ((x,y), c) cubeSize 
+  Pictures $ [ translate (-halfWid) (-halfWid) $ cubeAt ((x,y), c) cubeSize id -- (light . light) 
              | x <- [0..7], y <-[0..7], let c = spr ! (x,y) ] 
              -- ++ [_border, _marker]
     where
@@ -243,12 +243,12 @@ drawSprite cubeSize (_sprName, spr) =
        _marker = Color green $ rectangleSolid 1 1
        halfWid = wholeSpriteSize / 2
        wholeSpriteSize = 8 * fromIntegral cubeSize
-
-cubeAt :: ((Int, Int), Int) -> Int -> Picture
-cubeAt ((x,y),cIx) size = case cIx of
+type ColorEffect = (Color -> Color)
+cubeAt :: ((Int, Int), Int) -> Int -> ColorEffect -> Picture
+cubeAt ((x,y),cIx) size effect = case cIx of
       0 -> Pictures []  
       _ -> translate (f x) (f y) $ cubeSolid c edgeLen
-            where c = colorFor cIx
+            where c = effect $ colorFor cIx
                   f n = fromIntegral size * ((0.5::Float) + fromIntegral n)
                   edgeLen = round $ fromIntegral size * (0.9::Float)
 

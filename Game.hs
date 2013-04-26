@@ -3,7 +3,7 @@ module Game where
 import Control.Arrow ((&&&))
 import Data.List (nub, sort, group, (\\), foldl')
 import Data.Maybe (isNothing)
-import Debug.Trace (trace) --, traceShow)
+import Debug.Trace (trace, traceShow)
 import Prelude hiding (pi)
 import Test.HUnit
 import qualified Data.Map as M
@@ -725,5 +725,6 @@ testScoreMonuments = TestList
   , "monuments" ~: ScMonuments 15 120 ~=? scoreMonuments [mt | Monument mt <- allMonuments]
   ]
 
+foo = trace "foo" $ traceShow "foo" $ 3
 tests ::  IO Counts
 tests       = runTestTT $ TestList [ testScoreMonuments]
