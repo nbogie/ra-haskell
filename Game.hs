@@ -625,7 +625,7 @@ apply (CallRa reason) board =
    toMode board (InAuction reason (playersForAuction board) Nothing)
 
 apply Pass b = case gameMode b of
-  (InAuction reason pis current) -> if null candidates
+  (InAuction reason (pi:pis) current) -> if null candidates
     then
       finishAuction reason current b
     else
