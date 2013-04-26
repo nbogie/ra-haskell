@@ -225,7 +225,7 @@ vecadd (x,y) (a,b) = (x+a, y+b)
 drawSpritesAt ::  [(Int, Int)] -> [MySprite] -> Int -> Picture
 drawSpritesAt posns sprs sz = 
   Pictures $ map (\((x,y),s) -> 
-    translate ((fi x) * sprSize + 5) ((fi y) * sprSize + 5) $ drawSprite sz s) $ zip posns sprs
+    translate ((fi x) * sprSize) ((fi y) * sprSize) $ drawSprite sz s) $ zip posns sprs
     where 
       sprSize = fromIntegral sz * 8
       fi = fromIntegral
