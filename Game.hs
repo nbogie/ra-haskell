@@ -2,7 +2,8 @@ module Game where
 
 import Control.Arrow ((&&&))
 import Data.List (nub, sort, group, (\\), foldl')
-import Debug.Trace (trace)
+import Data.Maybe (isNothing)
+import Debug.Trace (trace, traceShow)
 import Prelude hiding (pi)
 import Test.HUnit
 import qualified Data.Map as M
@@ -511,6 +512,13 @@ playersForAuction b = take (numPlayers b) $ drop 1 $ playerCycle b
 faceUpSuns :: Player -> [Sun]
 faceUpSuns = fst . suns
 
+faceUpSunsBeating :: Maybe Sun -> Player -> [Sun]
+faceUpSunsBeating sM p = maybe fuss (\s -> filter (>s) fuss) sM
+  where fuss = faceUpSuns p
+
+hasFaceUpSunBeating :: Maybe Sun -> Player -> Bool
+hasFaceUpSunBeating s p = not $ null $ faceUpSunsBeating s p
+
 modSuns :: (SunsUpDown -> SunsUpDown) -> Player -> Player
 modSuns f p = p { suns = f (suns p) } 
 modTiles :: ([StoreableTile] -> [StoreableTile]) -> Player -> Player
@@ -530,8 +538,7 @@ winAuction pi ts disasterResolutions b winningSun =
   wipeBlock .
   addToTilesOf pi nonDisasterTiles $ b
 
-    where  wipeBlock brd = brd { block = []} 
-           nonDisasterTiles = [t | Storeable t <- ts]
+    where nonDisasterTiles = [t | Storeable t <- ts]
 
 -- shared between winAuction and exchangeGod
 resolveDisasters :: PlayerNum -> [DisasterResolution] -> Board -> Board
@@ -575,11 +582,11 @@ data Action = DrawTile
             | FinishWithGods
             | ChooseDisasterToResolve
             | ChooseTilesToDiscard
-            | BidASun
+            | BidASun PlayerNum Sun
             | Pass deriving (Show, Eq)
 
 data GameMode  = ChooseAction
-               | InAuction
+               | InAuction AuctionReason [PlayerNum] (Maybe (PlayerNum,Sun))
                | UsingGod
                | AfterUseGod
                | ResolveDisasters1
@@ -604,12 +611,82 @@ apply DrawTile board =
                 trace "Ra Track Full - Immediate End Of Epoch"
                 toMode (snd . endEpoch . advancePlayer $ newBoard) ChooseAction
               else 
-                toMode newBoard InAuction
+                toMode newBoard (InAuction RaDrawn (playersForAuction newBoard) Nothing)
+
       _ -> 
          toMode (advancePlayer newBoard) ChooseAction
            where newBoard = board { deck = rest, block = tile : block board } 
 
+apply (CallRa reason) board = 
+   trace  ("Choice: Call Ra." ++ show reason)$ 
+   toMode board (InAuction reason (playersForAuction board) Nothing)
+
+apply Pass b = case gameMode b of
+  (InAuction reason pis current) -> if null candidates
+    then
+      finishAuction reason current b
+    else
+      toMode b (InAuction reason candidates current)
+   where 
+     candidates = whoCanBeat (fmap snd current) pis b
+  other -> error $ "Pass action taken in invalid mode!: "++show other
+
+apply (BidASun pi sun) b = case gameMode b of
+  (InAuction reason (_:pis) _) -> 
+    if null candidates -- unbeatable bid. instant win.
+       then
+         finishAuction reason (Just (pi, sun)) b
+       else
+         toMode b (InAuction reason candidates bid)
+    where 
+      bid = (Just (pi, sun))
+      candidates = whoCanBeat (Just sun) pis b
+  other -> error $ "BidASun action taken in invalid mode!: "++show other
+
+-- hasFaceUpSunBeating :: Maybe Sun -> Player -> Bool
+   -- TODO: address: 
+   {-- 
+    if noOneLeftInPlay b
+     then snd . endEpoch . advancePlayer $ b
+     else advancePlayer $ b
+   --}
+
+{--
+disResns <- case bestBid of
+                   Just (_sun, winner) -> getDisasterResolutionsIO winner (block b) b
+                   Nothing            -> return []
+  let (newBoard, winr) = case bestBid of
+                            Just (sun, winner) -> (winAuction winner (block b) disResns  b sun, Just winner)
+                            Nothing            -> (b , Nothing)
+  let winnerIdStr = maybe "All Passed" (("Auction won by player " ++) . show) winr
+  putStrLn winnerIdStr
+  return $ newBoard { block = if reason == BlockFull then [] else block newBoard }
+--}
+  
 apply _ board = board
+
+wipeBlock :: Board -> Board
+wipeBlock b = b { block = [] }
+     
+finishAuction :: AuctionReason -> Maybe (PlayerNum, Sun) -> Board -> Board
+finishAuction reason bidM b = 
+  case bidM of 
+  Just (pi, sun) -> 
+     -- TODO: possibly move to disaster recovery before choose action
+     --       Perhaps we always flow through disaster recovery which has nothing to do sometimes
+     let disasterResns = []
+         b' = advancePlayer $ winAuction pi (block b) disasterResns b sun
+     in toMode b' ChooseAction -- TODO: advance player
+  Nothing        -> toMode b' ChooseAction
+    where b' = if reason == BlockFull
+                 then wipeBlock b
+                 else b
+
+-- Note: must return in order
+whoCanBeat :: Maybe Sun -> [PlayerNum] -> Board -> [PlayerNum]
+whoCanBeat sM pis b = filter (hasFaceUpSunBeating sM . (`handOf` b)) pis
+
+
 
 legalActions :: Board -> GameMode ->  [Action]
 legalActions b ChooseAction      = [CallRa reason] ++ useGodM ++ drawTileM
@@ -618,11 +695,20 @@ legalActions b ChooseAction      = [CallRa reason] ++ useGodM ++ drawTileM
      useGodM   = [UseGod   | currentPlayerCanUseGod b]
      drawTileM = [DrawTile | not (blockFull b)]
 legalActions _b UsingGod          = [PickTileToGod]
-legalActions b AfterUseGod       = if currentPlayerCanUseGod b then [UseAnotherGod, FinishWithGods] else []
+legalActions  b AfterUseGod       = if currentPlayerCanUseGod b then [UseAnotherGod, FinishWithGods] else []
 legalActions _b ResolveDisasters1 = [ChooseDisasterToResolve]
 legalActions _b ResolveDisasters2 = [ChooseTilesToDiscard] -- TODO: no action if auto-resolveable
-legalActions b InAuction         = if auctionPlayerHasLegalBid b then [BidASun, Pass] else []
-  where auctionPlayerHasLegalBid = error "NOT IMPLEMENTED: auctionPlayerHasLegalBid"
+legalActions _b (InAuction _ [] _curBidM) = error "InAuction with no players!"
+legalActions b (InAuction reason (pi:pis) curBidM) = 
+  if (not $ null $ legalBids) 
+   then map (BidASun pi) legalBids ++ [Pass | mayPass ]
+   else []
+  where 
+     legalBids = faceUpSunsBeating (fmap snd curBidM) p
+     p = handOf pi b
+     mayPass = not (isLast && isNothing curBidM && reason == RaCalledVoluntarily)
+     isLast = null pis
+
 
 
 testScoreMonuments ::  Test

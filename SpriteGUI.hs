@@ -9,6 +9,7 @@ import Graphics.Gloss.Interface.IO.Game
 import Prelude hiding (pi)
 import System.Environment(getArgs)
 import qualified Data.Map as M
+import Data.Char (ord, chr)
 
 import Game
 main ::  IO ()
@@ -81,7 +82,7 @@ inpFor UseAnotherGod           = InKey 'y'
 inpFor FinishWithGods          = InKey 'n'
 inpFor ChooseDisasterToResolve = CursorSelection CSDisasters
 inpFor ChooseTilesToDiscard    = CursorSelection CSDiscardables
-inpFor BidASun                 = CursorSelection CSSuns
+inpFor (BidASun _pi sun)       = InKey $ chr $ ord 'a' + (sunValue sun) - 1
 inpFor Pass                    = InKey 'p'
 
 handleInput :: Event -> GS -> IO GS
@@ -187,15 +188,28 @@ drawStore ::  GS -> Picture
 drawStore gs = drawSpritesAt posns sprs 8
   where posns = [(x,y) | y <- [1,0], x <- [0.. fromIntegral rowWidth - 1]]
         rowWidth = length (head boardLayout)
-        sprs = map ((`findSpriteOrError` sprites gs) . nameOfSprite) $ concat boardLayout
+        sprs = map sname ts
+        sname (t,True) = findSpriteOrError (nameOfSprite t) (sprites gs)
+        sname (_t,False) = findSpriteOrError "Blank" (sprites gs) 
+        ts = zip possibles $ map (`elem` (tiles $ active $ raBoard gs)) possibles
+        possibles = concat boardLayout
+
+drawRaTrack :: GS -> Picture
+drawRaTrack gs = drawSpritesAt posns sprs 8
+  where 
+    posns = [(fromIntegral x, 0) | x <- [0 .. rc ] ]
+    sprs = replicate rc (findSpriteOrError "Ra" $sprites gs)
+    rc = raCount (raBoard gs)
+
 
 drawState :: GS -> Picture
 drawState gs = Pictures 
    [ translate (200)  (100)  $ drawSprite 9 (curSprite gs)
+   , translate (-100) (100)  $ drawRaTrack gs
    , translate (-100) (0)    $ drawBlock gs
-   , translate (100)  (-100) $ drawSuns gs
+   , translate (100)  (-150) $ drawSuns gs
    , translate (-300) (-300) $ drawStore gs
-   ,  drawTextLines colorSeaGlass (-300,0) messages]
+   ,  drawTextLines colorSeaGlass (-300,50) messages]
    
   where 
     i = frame gs
