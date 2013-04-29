@@ -170,7 +170,7 @@ allStoreableTiles =
 -------------------------------------------------
 allNonStoreableTilesTweaked :: [NonStoreableTile]
 allNonStoreableTilesTweaked = 
-   replicate 30 Ra      ++ 
+   replicate 10 Ra      ++ 
    replicate 4 funeral  ++ 
    replicate 4 drought  ++ 
    replicate 6 unrest   ++ 
@@ -179,12 +179,12 @@ allNonStoreableTilesTweaked =
 allStoreableTilesTweaked :: [StoreableTile]
 allStoreableTilesTweaked = 
            replicate 20 God      ++ 
-           replicate 25 Pharaoh ++ 
-           replicate 25 Nile    ++ 
+           replicate 15 Pharaoh ++ 
+           replicate 10 Nile    ++ 
            replicate 12 Flood   ++ 
-           allCivilizations     ++ 
+           allCivilizationsTweaked     ++ 
            replicate 5 Gold     ++ 
-           allMonuments
+           allMonumentsTweaked
 
 allMonumentTypes ::  [MonumentType]
 allMonumentTypes     = [minBound .. maxBound]
@@ -195,7 +195,11 @@ allMonuments :: [StoreableTile]
 allMonuments     = concatMap (replicate 5 . Monument) allMonumentTypes
 allCivilizations :: [StoreableTile]
 allCivilizations = concatMap (replicate 5 . Civilization) allCivilizationTypes
+allCivilizationsTweaked ::  [StoreableTile]
+allCivilizationsTweaked = concatMap (replicate 10 . Civilization) allCivilizationTypes
 
+allMonumentsTweaked  :: [StoreableTile]
+allMonumentsTweaked = concatMap (replicate 10 . Monument) allMonumentTypes
 funeral :: NonStoreableTile
 funeral = Disaster Funeral
 drought ::  NonStoreableTile
@@ -217,13 +221,13 @@ blockIsEmpty = null . block
 blockIsNotEmpty :: Board -> Bool
 blockIsNotEmpty = not . blockIsEmpty
 blockFull :: Board -> Bool
-blockFull = (>=8) . length . block
+blockFull = (>=blockMax) . length . block
 
 blockToSummaryString :: Block -> String
 blockToSummaryString  = unlines . map show . sort . map (head &&& length) . group . sort
 
 blockToString :: Block -> String
-blockToString = padWith '.' 8 . map toChar
+blockToString = padWith '.' blockMax . map toChar
 playerToString ::(PlayerNum, Player) -> String
 playerToString (i, p) = "Player: " ++ show i ++ ": (" ++ show (score p) ++ "): " ++ show (sunsSorted p) ++ ", " ++ ts
   where ts            = tilesToString . tiles $ p
@@ -304,7 +308,7 @@ initPlayers n = map (\ss -> Player (ss, []) [] 10) sunSets
 initBoard :: Int -> [Tile] -> Board
 initBoard nPlayers ts = Board 
              { raCount = 0
-             , gameMode = ChooseAction
+             , gameMode = StartTurn
              , block = []
              , boardSun = Sun 1
              , epoch = Epoch 1
@@ -321,6 +325,14 @@ playerCycle b = playerCycleFromTo  (currentPlayerId b) (numPlayers b)
 active ::  Board -> Player
 active board = players board M.! currentPlayerId board
 
+
+currentOrAuctionCurrentPlayer :: Board -> Player
+currentOrAuctionCurrentPlayer board = players board M.! ix
+  where 
+    ix = case gameMode board of
+          (InAuction _reason (pi:_) _)          -> pi
+          (ResolveDisastersAfterAuction pi _ _ _) -> pi
+          _                                     -> currentPlayerId board
 advancePlayer :: Board -> Board
 advancePlayer b = b { currentPlayerId = (currentPlayerId b + 1) `mod` numPlayers b }
 advanceEpoch :: Board -> Board
@@ -449,6 +461,9 @@ forAllPlayers f b = b{ players = M.map f (players b) }
 initDeck :: [Tile] -> IO [Tile]
 initDeck = shuffle
 
+blockMax :: Int
+blockMax = 8
+
 raTrackFull :: Board -> Bool
 raTrackFull b = (>=mx) . raCount $ b
   where mx = raCountMax b
@@ -498,7 +513,8 @@ relatedToDisaster Drought = [Flood, Nile]
 relatedToDisaster Funeral = [Pharaoh]
 relatedToDisaster Unrest = map Civilization [minBound .. maxBound]
 relatedToDisaster Earthquake = map Monument [minBound .. maxBound]
-
+isRelatedToDisaster :: DisasterType -> StoreableTile -> Bool
+isRelatedToDisaster dt t = t `elem` relatedToDisaster dt
 
 canBidHigherThan :: (PlayerNum, Board) -> Sun -> Bool
 canBidHigherThan (pi, board) bid = 
@@ -521,6 +537,10 @@ faceUpSunsBeating sM p = maybe fuss (\s -> filter (>s) fuss) sM
 
 hasFaceUpSunBeating :: Maybe Sun -> Player -> Bool
 hasFaceUpSunBeating s p = not $ null $ faceUpSunsBeating s p
+
+-- Note: must return in same order as given players
+whoCanBeat :: Maybe Sun -> [PlayerNum] -> Board -> [PlayerNum]
+whoCanBeat sM pis b = filter (hasFaceUpSunBeating sM . (`handOf` b)) pis
 
 modSuns :: (SunsUpDown -> SunsUpDown) -> Player -> Player
 modSuns f p = p { suns = f (suns p) } 
@@ -555,6 +575,10 @@ type DisasterResolution = (DisasterType, [StoreableTile])
 turnSunsFaceUp :: SunsUpDown -> SunsUpDown
 turnSunsFaceUp (ups, downs) = (ups ++ downs, [])
 
+numberOfSuns :: Board -> Int
+numberOfSuns b = length (fuss++fdss)
+  where (fuss,fdss) = suns . head . M.elems . players  $ b
+
 exchangeSun:: PlayerNum -> Sun -> Board -> Board
 exchangeSun pi toBoard b = 
   b { boardSun = toBoard
@@ -577,29 +601,70 @@ currentPlayerCanUseGod board = playerHasGodTile && blockHasGoddableTiles
      playerHasGodTile      = elem God . tiles . active $ board
      blockHasGoddableTiles = any isGoddable . block $ board
 
-data Action = DrawTile
-            | CallRa AuctionReason 
-            | UseGod
-            | PickTileToGod
-            | AcUseAnotherGod
-            | FinishWithGods
-            | ChooseDisasterToResolve
-            | ChooseTilesToDiscard
-            | BidASun PlayerNum Sun
-            | Pass deriving (Show, Eq)
+data PossibleAction 
+            = PADrawTile
+            | PACallRa AuctionReason 
+            | PAEnterGodMode
+            | PAPickTileToGod [Tile]
+            | PAFinishWithGods
+            | PAProceedAfterScoreDisplay
+            | PAChooseTilesToDiscard DisasterType [StoreableTile]
+            | PABidASun [Sun]
+            | PAPass deriving (Show, Eq)
 
-data GameMode  = ChooseAction
+data ActualAction
+            = AADrawTile
+            | AACallRa AuctionReason 
+            | AAEnterGodMode
+            | AAPickTileToGod Tile
+            | AAFinishWithGods
+            | AAProceedAfterScoring
+            | AAChooseTilesToDiscard DisasterType StoreableTile
+            | AABidASun PlayerNum Sun
+            | AAPass deriving (Show, Eq)
+
+
+data GameMode  = StartTurn
                | InAuction AuctionReason [PlayerNum] (Maybe (PlayerNum,Sun))
-               | UsingGod
-               | AfterUseGod
-               | ResolveDisasters1
-               | ResolveDisasters2 deriving (Show, Eq)
+               | UsingGod Bool
+               | ShowScoring
+               | ResolveDisastersAfterAuction PlayerNum ([StoreableTile], [DisasterResolution], [DisasterType]) (Maybe StoreableTile) Sun
+               deriving (Show, Eq)
 
 
+data AfterDisasterResolutionContext = AuctionContext PlayerNum Sun | GodExchangeContext
 toMode :: Board -> GameMode -> Board
 toMode b m = b { gameMode = m }
-apply :: Action -> Board -> Board
-apply DrawTile board = 
+apply :: ActualAction -> Board -> Board
+apply AAProceedAfterScoring board = toMode board StartTurn -- TODO ensure this isn't relevant to game over
+apply AAEnterGodMode board = toMode board (UsingGod False)
+apply AAFinishWithGods board = toMode b' StartTurn
+  where b' = advancePlayer board
+
+apply (AAPickTileToGod t) board = 
+  let piNotNeeded = currentPlayerId board 
+      sunNotNeeded = Sun 1 -- TODO: DONT DO THIS
+      tilesInHand = tiles . active $ board
+      finishOneGodUse :: Tile -> [DisasterResolution] -> Board -> Board
+      finishOneGodUse t drs b = if currentPlayerCanUseGod b'
+                                  then toMode b' (UsingGod True)
+                                  else toMode (advancePlayer $ b') StartTurn
+                                  where b' = exchangeGod (currentPlayerId b) t drs b
+  in
+    case t of
+    NonStoreable (Disaster dt) -> 
+      case tryToAutoResolve (tilesInHand, [], [dt]) dt of --TODO: simpler sig for tryToAutoResolveOne
+        (_, [], _) -> 
+          --TODO:  not resolvedisastersafterauction, but after use god! goes to use another god, or exhcange god, at end
+          -- ResolveDisasters (tilesInHand, [], disasters) GodExchangeContext
+          toMode board (ResolveDisastersAfterAuction piNotNeeded (tilesInHand, [], [dt]) Nothing sunNotNeeded)
+        (finalTiles, drs, _dts) -> finishOneGodUse t drs board
+    _                          -> finishOneGodUse t [] board
+          -- TODO: reconcile the difference between multi-god use (where the board really changes as each god is used) and multi DR in auctions, where the board is only changed after all DRs have been stored up in a mode
+          -- exchangeGod :: PlayerNum -> Tile -> [DisasterResolution] -> Board -> Board
+
+
+apply AADrawTile board = 
   if deckEmpty board 
   then 
     error "END: no more tiles"
@@ -612,20 +677,20 @@ apply DrawTile board =
          in if raTrackFull newBoard
               then 
                 trace "Ra Track Full - Immediate End Of Epoch"
-                toMode (snd . endEpoch . advancePlayer $ newBoard) ChooseAction
+                toMode (snd . endEpoch . advancePlayer $ newBoard) ShowScoring
               else 
                 toMode newBoard (InAuction RaDrawn (playersForAuction newBoard) Nothing)
 
       _ -> 
-         toMode (advancePlayer newBoard) ChooseAction
+         toMode (advancePlayer newBoard) StartTurn
            where newBoard = board { deck = rest, block = tile : block board } 
 
-apply (CallRa reason) board = 
+apply (AACallRa reason) board = 
    trace  ("Choice: Call Ra." ++ show reason)$ 
    toMode board (InAuction reason (playersForAuction board) Nothing)
 
-apply Pass b = case gameMode b of
-  (InAuction reason (pi:pis) current) -> if null candidates
+apply AAPass b = case gameMode b of
+  (InAuction reason (_pi:pis) current) -> if null candidates
     then
       finishAuction reason current b
     else
@@ -634,7 +699,25 @@ apply Pass b = case gameMode b of
      candidates = whoCanBeat (fmap snd current) pis b
   other -> error $ "Pass action taken in invalid mode!: "++show other
 
-apply (BidASun pi sun) b = case gameMode b of
+apply (AAChooseTilesToDiscard _dt t) b  = 
+   case gameMode b of
+     -- first of two picks
+     (ResolveDisastersAfterAuction pi (sts, drs, dts) Nothing s) -> traceShow ("pick another", t ) $ toMode b (ResolveDisastersAfterAuction pi (sts \\ [t], drs, dts) (Just t) s)
+     -- second of two picks
+     (ResolveDisastersAfterAuction pi (sts, drs, dts) (Just prevT) s) -> 
+        case dts of
+          -- all done this was last one
+          -- TODO: case on whether the context is god exchange or auction win.
+          [dt] -> traceShow ("winning", addDR dt) $ toMode win StartTurn
+                   where win = advancePlayer $ winAuction pi (block b) (addDR dt) b s
+          -- more DRs to do
+          (dt:dts') -> traceShow ("do more DRS", addDR dt) $ toMode b (ResolveDisastersAfterAuction pi (sts \\ [t], addDR dt, dts') Nothing s)
+          []   -> error "BUG: apply AAChooseTilesToDiscard, mode has no dts remaining"
+      where
+         addDR forDT = drs ++ [(forDT,[prevT,t])] 
+     other -> error $ "BUG: apply AAChooseTilesToDiscard in bad mode: " ++ show other
+
+apply (AABidASun pi sun) b = case gameMode b of
   (InAuction reason (_:pis) _) -> 
     if null candidates -- unbeatable bid. instant win.
        then
@@ -666,7 +749,6 @@ disResns <- case bestBid of
   return $ newBoard { block = if reason == BlockFull then [] else block newBoard }
 --}
   
-apply _ board = board
 
 wipeBlock :: Board -> Board
 wipeBlock b = b { block = [] }
@@ -675,37 +757,79 @@ finishAuction :: AuctionReason -> Maybe (PlayerNum, Sun) -> Board -> Board
 finishAuction reason bidM b = 
   case bidM of 
   Just (pi, sun) -> 
-     -- TODO: possibly move to disaster recovery before choose action
+     case unresolveds of
+
+       [] -> toMode win StartTurn
+         where 
+           win = advancePlayer $ winAuction pi (block b) drs b sun
+
+       _ -> toMode b (ResolveDisastersAfterAuction pi (candidatesRemaining, drs, unresolveds) Nothing sun)
+       -- Only finishing resolution will finally win the auction, and swap suns.
+       
+     where
+       (candidatesRemaining, drs, unresolveds) = tryToAutoResolveAll candidates (disasterTypesIn (block b))
+       playerTiles      = tiles $ handOf pi b
+       candidates       = playerTiles ++ nonDisasterTiles
+       nonDisasterTiles = [t | Storeable t <- block b]
+       -- TODO: possibly move to disaster recovery before choose action
      --       Perhaps we always flow through disaster recovery which has nothing to do sometimes
-     let disasterResns = []
-         b' = advancePlayer $ winAuction pi (block b) disasterResns b sun
-     in toMode b' ChooseAction -- TODO: advance player
-  Nothing        -> toMode b' ChooseAction
+  Nothing        -> toMode b' StartTurn
     where b' = if reason == BlockFull
                  then wipeBlock b
                  else b
 
--- Note: must return in order
-whoCanBeat :: Maybe Sun -> [PlayerNum] -> Board -> [PlayerNum]
-whoCanBeat sM pis b = filter (hasFaceUpSunBeating sM . (`handOf` b)) pis
+
+disasterTypesIn ::  [Tile] -> [DisasterType]
+disasterTypesIn ts = [dt | NonStoreable (Disaster dt) <- ts]
+
+-- (the pool, successful resolutions, unresolvable disasters)
+type DRAcc =  ([StoreableTile], [DisasterResolution], [DisasterType])
+
+tryToAutoResolveAll :: [StoreableTile] -> [DisasterType] -> DRAcc
+tryToAutoResolveAll ts dts = foldl' tryToAutoResolve (ts, [], []) dts
+
+tryToAutoResolve :: DRAcc -> DisasterType -> DRAcc
+tryToAutoResolve ([], resns, _fails) _    = ([], resns, [])
+tryToAutoResolve (pool, resns, fails) dt = 
+  case sacrificesM of
+    Just sacrifices -> (pool \\ sacrifices, resns++[(dt,sacrifices)], fails)
+    Nothing         -> (pool, resns, fails ++ [dt])
+  where 
+    relevant = filter (`elem` relatedToDisaster dt) pool
+    sacrificesM = case dt of
+     Funeral -> Just $ take 2 relevant
+     Drought -> Just $ take 2 $ allz Flood ++ allz Nile
+                  where allz t = filter (==t) relevant
+     _other  | length relevant <= 2 -> Just $ take 2 relevant -- no choice
+             | otherwise            -> Nothing -- not auto resolvable
 
 
+legalActions :: Board -> GameMode ->  [PossibleAction]
 
-legalActions :: Board -> GameMode ->  [Action]
-legalActions b ChooseAction      = [CallRa reason] ++ useGodM ++ drawTileM
+legalActions b StartTurn      = [PACallRa reason] ++ useGodM ++ drawTileM
   where
      reason    = if blockFull b then BlockFull else RaCalledVoluntarily
-     useGodM   = [UseGod   | currentPlayerCanUseGod b]
-     drawTileM = [DrawTile | not (blockFull b)]
-legalActions _b UsingGod          = [PickTileToGod]
-legalActions  b AfterUseGod       = if currentPlayerCanUseGod b then [AcUseAnotherGod, FinishWithGods] else []
-legalActions _b ResolveDisasters1 = [ChooseDisasterToResolve]
-legalActions _b ResolveDisasters2 = [ChooseTilesToDiscard] -- TODO: no action if auto-resolveable
+     useGodM   = [PAEnterGodMode   | currentPlayerCanUseGod b]
+     drawTileM = [PADrawTile | not (blockFull b)]
+
+legalActions _b ShowScoring       = [PAProceedAfterScoreDisplay]
+
+legalActions b (UsingGod usedAtLeastOneGod) = [PAPickTileToGod goddableTiles] 
+                                              ++ [PAFinishWithGods | usedAtLeastOneGod]
+  where 
+     goddableTiles = filter isGoddable $ block b
+
+legalActions _b (ResolveDisastersAfterAuction _pi (remainingTiles, _drs, (dt:_dts)) _firstM _winningSun) 
+     = [PAChooseTilesToDiscard dt remainingTiles]
+legalActions _b (ResolveDisastersAfterAuction _ (_, _, []) _ _) 
+     = error $ "BUG: legalActions, ResolveDisastersAfterAuction has empty dts"
+
 legalActions _b (InAuction _ [] _curBidM) = error "InAuction with no players!"
+
 legalActions b (InAuction reason (pi:pis) curBidM) = 
   if (not $ null $ legalBids) 
-   then map (BidASun pi) legalBids ++ [Pass | mayPass ]
-   else []
+   then PABidASun legalBids : [PAPass | mayPass ]
+   else error $ "Invalid state: InAuction with player " ++ show pi ++ " though player has no legal bids!"
   where 
      legalBids = faceUpSunsBeating (fmap snd curBidM) p
      p = handOf pi b
@@ -713,6 +837,9 @@ legalActions b (InAuction reason (pi:pis) curBidM) =
      isLast = null pis
 
 
+maybeAt :: [a] -> Int -> Maybe a
+maybeAt xs i | i >= 0 && i < length xs = Just $ xs !! i
+             | otherwise               = Nothing
 
 testScoreMonuments ::  Test
 testScoreMonuments = TestList 
@@ -725,6 +852,22 @@ testScoreMonuments = TestList
   , "monuments" ~: ScMonuments 15 120 ~=? scoreMonuments [mt | Monument mt <- allMonuments]
   ]
 
+testAutoResolution :: Test
+testAutoResolution = TestList
+  [ tryToAutoResolveAll [Pharaoh] [Funeral, Drought, Earthquake, Unrest] ~?= ([], [(Funeral, [Pharaoh])], [])
+  , tryToAutoResolveAll [] [Funeral, Drought, Earthquake, Unrest] ~?= ([], [], [])
+  , let hand = [Gold, Civilization Art, Civilization Art, Civilization Agriculture] 
+    in  "3 civs" ~: tryToAutoResolveAll hand [Unrest] ~?= (hand, [], [Unrest])
+  , let hand = [Civilization Art, Civilization Agriculture] 
+    in "just 2 civs" ~: tryToAutoResolveAll hand [Unrest] ~?= ([], [(Unrest, hand)], [])
+  , tryToAutoResolveAll [Nile, Flood, Nile] [Drought] ~?= ([Nile], [(Drought, [Flood, Nile])], [])
+  , tryToAutoResolveAll [Gold, Pharaoh, Pharaoh, Pharaoh] [Drought, Funeral, Earthquake, Unrest] ~?= 
+    ([Gold, Pharaoh], [(Drought, []), (Funeral, [Pharaoh, Pharaoh]), (Earthquake, []), (Unrest, [])], [])
+  ]
+
+foo ::  Integer
 foo = trace "foo" $ traceShow "foo" $ 3
+
 tests ::  IO Counts
-tests       = runTestTT $ TestList [ testScoreMonuments]
+tests       = runTestTT $ TestList [ testScoreMonuments
+                                   , testAutoResolution ]
