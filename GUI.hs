@@ -35,7 +35,7 @@ loopIO board = do
     then do
     putStrLn "GAME OVER. Final score follows: "
     putStrLn $ boardToString $ scoreEpoch board
-    else if not $ isStillInPlay $ handOf pi board
+    else if not $ isStillInPlay board pi
       then do
          playMsg pi "You are being skipped - you have no face-up suns."
          loopIO (advancePlayer board)
@@ -157,7 +157,7 @@ findBestBidIO :: Bool -> Board -> [PlayerNum] -> Maybe (Sun, PlayerNum)  -> IO (
 findBestBidIO _ _ [] topBid = return topBid
 findBestBidIO lastMustBid b (pi:pis) topBid = do
      let isLast = null pis 
-     if isStillInPlay (handOf pi b) && maybe True (((pi,b) `canBidHigherThan`) . fst) topBid
+     if isStillInPlay b pi && maybe True (((pi,b) `canBidHigherThan`) . fst) topBid
        then
          if isLast && isNothing topBid && lastMustBid
            then

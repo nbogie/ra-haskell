@@ -84,15 +84,16 @@ data CursorGroup
   deriving (Show, Eq)
 
 inpFor :: PossibleAction -> InputHandler
-inpFor PADrawTile                     = InKey 'd'
-inpFor (PACallRa _)                   = InKey 'r'
-inpFor PAEnterGodMode                 = InKey 'g'
-inpFor (PAPickTileToGod ts)           = CursorSelection (CSGoddableTiles ts)
-inpFor PAFinishWithGods               = InKey 'p'
-inpFor (PAChooseTilesToDiscard dt ts) = CursorSelection $ CSDiscardables dt ts
-inpFor (PABidASun ss)                 = CursorSelection $ CSSuns ss -- InKey $ chr $ ord 'a' + (sunValue sun) - 1
-inpFor PAPass                         = InKey 'p'
-inpFor PAProceedAfterScoreDisplay     = InKey 'c'
+inpFor PADrawTile             = InKey 'd'
+inpFor (PACallRa _)           = InKey 'r'
+inpFor PAEnterGodMode         = InKey 'g'
+inpFor (PAPickTileToGod ts)   = CursorSelection (CSGoddableTiles ts)
+inpFor PAFinishWithGods       = InKey 'p'
+inpFor (PADiscardTiles dt ts) = CursorSelection $ CSDiscardables dt ts
+inpFor (PABidASun ss)         = CursorSelection $ CSSuns ss -- InKey $ chr $ ord 'a' + (sunValue sun) - 1
+inpFor PAPass                 = InKey 'p'
+inpFor PABeginNewEpoch        = InKey 'c'
+inpFor PAQuit                 = InKey 'q'
 
 handleInput :: Event -> GS -> IO GS
 handleInput e gs = return $ handleWithAll handlers e gs
@@ -107,17 +108,17 @@ handleWithAll hs e gs = fromMaybe gs (firstHandlerM >>= handle e gs)
     firstHandlerM = find (isJust . handle e gs) hs
 
 handle :: Event -> GS -> FullInputHandler -> Maybe GS
-handle (EventKey (Char cE) Down _mods _) gs ((InKey cI), paction) = if cE == cI 
+handle (EventKey (Char cE) Down _mods _) gs (InKey cI, paction) = if cE == cI 
                                                                    then Just $ applyAction (concretize paction) gs
                                                                    else Nothing
    where 
-      concretize PADrawTile                   = AADrawTile
-      concretize (PACallRa r)                 = (AACallRa r)
-      concretize (PAPass)                     = (AAPass)
-      concretize (PAEnterGodMode)             = (AAEnterGodMode)
-      concretize (PAFinishWithGods)           = (AAFinishWithGods)
-      concretize (PAProceedAfterScoreDisplay) = AAProceedAfterScoring
-      concretize other  = error $ "BUG: asked to handle a key for possible action: " ++ show other
+      concretize PADrawTile         = AADrawTile
+      concretize (PACallRa r)       = AACallRa r
+      concretize (PAPass)           = AAPass
+      concretize (PAEnterGodMode)   = AAEnterGodMode
+      concretize (PAFinishWithGods) = AAFinishWithGods
+      concretize (PABeginNewEpoch)  = AABeginNewEpoch
+      concretize other              = error $ "BUG: asked to handle a key for possible action: " ++ show other
 
 handle (EventKey (SpecialKey KeyEnter) Down _ _) gs (CursorSelection cursorGroup, _paction) = 
   case actionM of
@@ -139,10 +140,10 @@ handle (EventKey (SpecialKey KeyEnter) Down _ _) gs (CursorSelection cursorGroup
          -- resolving disasters
          (CSDiscardables dt discardables) -> 
            case mfilter isLegalChoice tileAtCursorM of
-            Just tile -> Just $ AAChooseTilesToDiscard dt tile
+            Just tile -> Just $ AADiscardTile dt tile
             _         -> Nothing
            where
-             isLegalChoice t = (t `elem` discardables) && (isRelatedToDisaster dt t)
+             isLegalChoice t = t `elem` discardables && isRelatedToDisaster dt t
              (ts, posns, _countMs) = storeOrWonTilesAtPositions gs
              tileAtCursorM :: Maybe StoreableTile
              tileAtCursorM = case find ((==pos). fst) $ zip posns ts of
@@ -154,7 +155,7 @@ handle (EventKey (SpecialKey KeyEnter) Down _ _) gs (CursorSelection cursorGroup
          --bidding
          (CSSuns ss) -> if sunAtCursor `elem` ss
                            then Just (AABidASun pi sunAtCursor)
-                           else (traceShow ("not member of allowed suns", sunAtCursor, ss)) Nothing
+                           else traceShow ("not member of allowed suns", sunAtCursor, ss) Nothing
       (InAuction _reason (pi:_) _curBid) = gameMode $ raBoard gs
       sunAtCursor = sunAtIndex x
         where
@@ -207,9 +208,9 @@ capPos ((x0,y0), (x1,y1)) (x,y) = (cap x x0 x1, cap y y0 y1)
                  | otherwise = n
 
 sunCursor, blockCursor, storeCursor :: GS -> (Int, Int) 
-sunCursor gs = (cursors gs) M.! SunCursor
-blockCursor gs = (cursors gs) M.! BlockCursor
-storeCursor gs = (cursors gs) M.! StoreCursor
+sunCursor gs   = cursors gs M.! SunCursor
+blockCursor gs = cursors gs M.! BlockCursor
+storeCursor gs = cursors gs M.! StoreCursor
 
 drawSuns ::  GS -> Picture
 drawSuns gs = Pictures [ drawSpritesAt posns sprs (cycle [Nothing]) miniblockSize
@@ -268,6 +269,11 @@ data GS = GS { frame :: Int
              , sprites :: SpriteMap
              } deriving (Show, Eq)
 
+drawSunOnBlock :: GS -> Picture
+drawSunOnBlock gs = drawSprite cubeSize (findSpriteOrError (nameOfSprite s) (sprites gs)) Nothing
+  where s = boardSun $ raBoard gs
+        cubeSize = 8
+
 drawBlock ::  GS -> Picture
 drawBlock gs = Pictures [ drawSpritesAt posns sprs (cycle [Nothing]) blockSize
                         , drawCursor (blockCursor gs) spriteSize
@@ -303,8 +309,8 @@ storeOrWonTilesAtPositions gs = (ts, posns, countMs)
 
      ts = zip possibles $ map (`elem` tilesInHandOrBeingWon ) possibles
      tilesInHandOrBeingWon = sort $ case gameMode $ raBoard gs of
-            (ResolveDisastersAfterAuction _ (sts,_,_) _ _) -> sts
-            _ -> tiles $ currentOrAuctionCurrentPlayer $ raBoard gs
+            (ResolveDisasters (sts,_,_) _ (AuctionDRContext _ _)) -> sts -- not when godding
+            _                                                     -> tiles $ currentOrAuctionCurrentPlayer $ raBoard gs
      possibles = concat boardLayout
 
 drawRaTrack :: GS -> Picture
@@ -320,30 +326,43 @@ drawRaTrack gs = drawSpritesAt posns sprs (cycle [Nothing]) 8
 
 drawScoring :: GS -> Picture
 drawScoring gs = case gameMode $ raBoard gs of
-  ShowScoring -> Pictures $ [ Color white $ rectangleSolid 400 400
-                            , drawTextLines black scoringText
-                            ]
+  ShowScoring ep -> Pictures [ Color white $ rectangleSolid 400 400
+                             , drawTextLines black scoringText
+                             ]
+                    where scoringText =  [ "Scoring text goes here."
+                                         , "At end of " ++ show ep
+                                         , "Press 'c' to continue."]
   _           -> Blank
-  where scoringText = ["Scoring text goes here.", "Press 'c' to continue."]
 
 drawState :: GS -> Picture
 drawState gs = Pictures 
    [ translate (200)  (100)  $ drawSprite 9 (curSprite gs) Nothing
    , translate (-300) (100)  $ drawRaTrack gs
+   , translate (-300) (0)    $ drawSunOnBlock gs
    , translate (-200) (0)    $ drawBlock gs
    , translate (100)  (-150) $ drawSuns gs
    , translate (-300) (-300) $ drawStore gs
-   , translate (0) (0)       $ drawScoring gs
-   , translate (-400) (-30) $ drawTextLines colorSeaGlass messages]
+   , translate (0)    (0)    $ drawScoring gs
+   , translate (-400) (-30)  $ drawTextLines colorSeaGlass messages]
   where 
     i = frame gs
-    messages = [ "Ra Sprite GUI"
-               , "Game Mode: " ++ show (gameMode $ raBoard gs)
+    messages = [ titleForGameMode (gameMode $ raBoard gs)
                ] ++ map show (handlersForLegalAcs gs) ++
                [-- , "Deck: " ++ show $ deck $ raBoard gs
                 "Frame: " ++ show i
+                , show (epoch $ raBoard gs)
+                , show (currentOrAuctionCurrentPlayer $ raBoard gs)
+
                 , "Cursors: " ++ show (cursors gs)
                ]
+
+titleForGameMode ::  GameMode -> String
+titleForGameMode (InAuction{})        = "Auction!"
+titleForGameMode (UsingGod _)         = "Use a God"
+titleForGameMode (ShowScoring ep)     = "Scoring at end of " ++ show ep
+titleForGameMode (ResolveDisasters{}) = "Resolve disaster(s)"
+titleForGameMode (StartTurn)          = "Choose Action"
+
 
 vecadd ::  (Num t1, Num t) => (t, t1) -> (t, t1) -> (t, t1)
 vecadd (x,y) (a,b) = (x+a, y+b)
@@ -351,7 +370,7 @@ vecadd (x,y) (a,b) = (x+a, y+b)
 drawSpritesAt ::  [(Int, Int)] -> [MySprite] -> [Maybe Int] -> Int -> Picture
 drawSpritesAt posns sprs countMs sz = 
   Pictures $ map (\((x,y),s,n) -> 
-    translate ((fi x) * sprSize) ((fi y) * sprSize) $ drawSprite sz s n) $ zip3 posns sprs countMs
+    translate (fi x * sprSize) (fi y * sprSize) $ drawSprite sz s n) $ zip3 posns sprs countMs
     where 
       sprSize = fromIntegral sz * 8
       fi = fromIntegral
@@ -455,7 +474,7 @@ class HasSpriteName a where
   nameOfSprite :: a -> String
 
 instance HasSpriteName Tile where
-  nameOfSprite (Storeable st) = nameOfSprite st
+  nameOfSprite (Storeable st)     = nameOfSprite st
   nameOfSprite (NonStoreable nst) = nameOfSprite nst
 
 instance HasSpriteName NonStoreableTile where
