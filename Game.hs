@@ -821,7 +821,7 @@ biddingEnded reason bestBidM b =
        -- TODO: possibly move to disaster recovery before choose action
      --       Perhaps we always flow through disaster recovery which has nothing to do sometimes
 
-  Nothing        -> toMode b' StartTurn
+  Nothing        -> toMode (advancePlayer b') StartTurn
     where b' = if reason == BlockFull
                  then wipeBlock b
                  else b
