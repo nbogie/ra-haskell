@@ -2,14 +2,14 @@ module Main where
 import Control.Monad (mfilter)
 import Data.Array
 import Data.List(find, sort)
+import qualified Data.Map as M
 import Data.Map (Map)
 import Data.Maybe(fromMaybe,mapMaybe, isJust, maybeToList)
-import Debug.Trace
+-- import Debug.Trace
 import Graphics.Gloss
 import Graphics.Gloss.Interface.IO.Game
 import Prelude hiding (pi)
 import System.Environment(getArgs)
-import qualified Data.Map as M
 
 import Game
 main ::  IO ()
@@ -25,7 +25,7 @@ main = do
                parsedN = read nStr
            _                 -> error usage
 
-  _counts <- tests
+  _counts  <- tests
   contents <- readFile "sprites.dat"
   let sprs =  readCharsMap (lines contents)
   board <- fmap (initBoard nPlayers) (initDeck tileSet)
@@ -154,7 +154,7 @@ handle (EventKey (SpecialKey KeyEnter) Down _ _) gs (CursorSelection cursorGroup
          --bidding
          (CSSuns ss) -> if sunAtCursor `elem` ss
                            then Just (AABidASun pi sunAtCursor)
-                           else traceShow ("not member of allowed suns", sunAtCursor, ss) Nothing
+                           else Nothing -- not a legal bid
       (InAuction _reason (pi:_) _curBid) = gameMode $ raBoard gs
       sunAtCursor = sunAtIndex x
         where
@@ -229,20 +229,6 @@ findSpriteOrError ::  String -> Map String a -> a
 findSpriteOrError k smap = fromMaybe 
                              (error $ "ERROR: No sprite by name "++k)
                              (M.lookup k smap)
-
-drawTile ::  GS -> GS
-drawTile gs = gs { raBoard = newBoard
-                 , curSprite = fromMaybe cSprite newSprite } 
-  where newBoard = (raBoard gs) { deck = newDeck }
-        cSprite = curSprite gs
-        topTileM :: Maybe Tile
-        newDeck :: [Tile]
-        (topTileM, newDeck) = popOrStay oldDeck
-        oldDeck = deck $ raBoard gs
-        popOrStay :: [Tile] -> (Maybe Tile, [Tile])
-        popOrStay [] = (Nothing, [])
-        popOrStay (x:xs) = (Just x, xs)
-        newSprite = topTileM >>= spriteForTile (sprites gs)
 
 spriteForTile :: SpriteMap -> Tile -> Maybe MySprite
 spriteForTile smap t = M.lookup (nameOfSprite t) smap
@@ -328,11 +314,11 @@ drawRaTrack gs = drawSpritesAt posns sprs (cycle [Nothing]) 8
 
 drawScoring :: GS -> Picture
 drawScoring gs = case gameMode $ raBoard gs of
-  ShowScoring ep -> Pictures [ Color white $ rectangleSolid 400 400
-                             , drawTextLines black scoringText
-                             ]
-                    where scoringText =  [ "Scoring text goes here."
-                                         , "At end of " ++ show ep
+  ShowScoring ep scrMap -> Pictures [ Color white $ rectangleSolid 800 500
+                                    , translate (-400) (250)  $ drawTextLines black scoringText
+                                    ]
+                    where scoringText =  (concatMap snd $ M.elems scrMap) ++
+                                         [ "At end of " ++ show ep
                                          , "Press 'c' to continue."]
   _           -> Blank
 
@@ -359,11 +345,11 @@ drawState gs = Pictures
                ]
 
 titleForGameMode ::  GameMode -> String
-titleForGameMode (InAuction{})        = "Auction!"
-titleForGameMode (UsingGod _)         = "Use a God"
-titleForGameMode (ShowScoring ep)     = "Scoring at end of " ++ show ep
-titleForGameMode (ResolveDisasters{}) = "Resolve disaster(s)"
-titleForGameMode (StartTurn)          = "Choose Action"
+titleForGameMode (InAuction{})            = "Auction!"
+titleForGameMode (UsingGod _)             = "Use a God"
+titleForGameMode (ShowScoring ep _scrMap) = "Scoring at end of " ++ show ep
+titleForGameMode (ResolveDisasters{})     = "Resolve disaster(s)"
+titleForGameMode (StartTurn)              = "Choose Action"
 
 
 vecadd ::  (Num t1, Num t) => (t, t1) -> (t, t1) -> (t, t1)
@@ -392,7 +378,9 @@ drawSprite cubeSize (_sprName, spr) numM =
        halfWid = wholeSpriteSize / 2
        quartWid = wholeSpriteSize / 4
        wholeSpriteSize = 8 * fromIntegral cubeSize
+
 type ColorEffect = (Color -> Color)
+
 cubeAt :: ((Int, Int), Int) -> Int -> ColorEffect -> Picture
 cubeAt ((x,y),cIx) size effect = case cIx of
       0 -> Pictures []  
@@ -416,7 +404,8 @@ drawCursor (x,y) sz = Color yellow $ translate (m x) (m y) $ rectangleWire (fi s
         fi = fromIntegral
 
 colorSea ::  Color
-colorSea      = makeColor8 46 90 107 255
+colorSea = makeColor8 46 90 107 255
+
 colorSeaGlass ::  Color
 colorSeaGlass = makeColor8 163 204 188 255
 
@@ -436,6 +425,7 @@ textWithSprites sprMap msg = drawSpritesAt posns sprs (cycle [Nothing]) 8
 
 readCharsMap :: [String] -> M.Map String MySprite
 readCharsMap = M.fromList . readChars
+
 readChars :: [String] -> [(String, MySprite)]
 readChars [] = []
 readChars ls = thing : readChars remainder
@@ -452,19 +442,6 @@ readChar ls = case ls of
 
 readCharLine :: String -> [Int]
 readCharLine = map (read . (:""))
-
-writeSprites  :: SpriteMap -> IO () 
-writeSprites sprMap = do
-  let content = concatMap writeSprite (M.toList sprMap)
-  writeFile "sprites.dat" content
-  
-writeSprite :: (String, MySprite) -> String
-writeSprite (name, (_, arry)) = unlines $ name : write arry
-   where
-   write :: GridArray -> [String]
-   write ar = wrapAt 8 [head $ show c | y <- [7,6..0], x <- [0..7], let c = ar ! (x,y)]
-   wrapAt _ [] = []
-   wrapAt n xs = take n xs : wrapAt n (drop n xs)
 
 spriteName ::  (t, t1) -> t
 spriteName (n,_) = n
@@ -496,5 +473,4 @@ boardLayout = [ topMons ++ topCivs ++ [Pharaoh] ++ [God] ++ [Flood]
     mons = map Monument allMonumentTypes
     civs = map Civilization allCivilizationTypes
     splitCounted n xs = (take n xs, drop n xs)
-
 

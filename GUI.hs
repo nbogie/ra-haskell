@@ -34,7 +34,7 @@ loopIO board = do
   if isGameOver board
     then do
     putStrLn "GAME OVER. Final score follows: "
-    putStrLn $ boardToString $ scoreEpoch board
+    putStrLn $ boardToString $ fst $ scoreEpoch board
     else if not $ isStillInPlay board pi
       then do
          playMsg pi "You are being skipped - you have no face-up suns."
@@ -61,7 +61,7 @@ loopIO board = do
 
             ChoiceShowScores -> do
               putStrLn "Choice: Compute score as though at epoch end."
-              putStrLn $ boardToString $ scoreEpoch board
+              putStrLn $ boardToString $ fst $ scoreEpoch board
               loopIO board
 
             ChoiceAdvanceEpoch -> do

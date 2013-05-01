@@ -3,6 +3,9 @@
 * improve types to enforce that certain tiles (Ra tiles) cannot be held in the auction block.
 
 DONE:
+* player having highest sun at the start of an epoch starts that epoch
+* reflect number of each tile in store
+* when drawing store when in mode ResolveDisastersAfterAuction (or after god), populate store with store + remaining candidates from block (those not already used in an autoresolution)
 * improve types so that certain tiles are not holdable in a hand (disasters and Ra tiles), enforced by the type system.  See docs/question_tiletypes.txt and the commit https://github.com/nbogie/ra-haskell/commit/77c16fdbb6627156f7a3f78b1c37c9730d7c4e79
 * handle case where all players run out of suns before end of epoch
 * correct the design: when the block is full, an auction isn't automatically called - player may call ra, OR use god(s) if held. Remember this invocation of ra is classed involuntary.
