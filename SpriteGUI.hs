@@ -93,7 +93,6 @@ inpFor (PADiscardTiles dt ts) = CursorSelection $ CSDiscardables dt ts
 inpFor (PABidASun ss)         = CursorSelection $ CSSuns ss -- InKey $ chr $ ord 'a' + (sunValue sun) - 1
 inpFor PAPass                 = InKey 'p'
 inpFor PABeginNewEpoch        = InKey 'c'
-inpFor PAQuit                 = InKey 'q'
 
 handleInput :: Event -> GS -> IO GS
 handleInput e gs = return $ handleWithAll handlers e gs
@@ -118,7 +117,7 @@ handle (EventKey (Char cE) Down _mods _) gs (InKey cI, paction) = if cE == cI
       concretize (PAEnterGodMode)   = AAEnterGodMode
       concretize (PAFinishWithGods) = AAFinishWithGods
       concretize (PABeginNewEpoch)  = AABeginNewEpoch
-      concretize other              = error $ "BUG: asked to handle a key for possible action: " ++ show other
+      concretize other              = error $ "BUG: asked to handle a key for unknown possible-action: " ++ show other
 
 handle (EventKey (SpecialKey KeyEnter) Down _ _) gs (CursorSelection cursorGroup, _paction) = 
   case actionM of

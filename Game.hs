@@ -639,7 +639,6 @@ data PossibleAction
             | PADiscardTiles DisasterType [StoreableTile]
             | PABidASun [Sun]
             | PAPass
-            | PAQuit
             deriving (Show, Eq)
 
 data ActualAction
@@ -651,7 +650,8 @@ data ActualAction
             | AABeginNewEpoch
             | AADiscardTile DisasterType StoreableTile
             | AABidASun PlayerNum Sun
-            | AAPass deriving (Show, Eq)
+            | AAPass
+            deriving (Show, Eq)
 
 
 data GameMode  = StartTurn
@@ -857,7 +857,7 @@ legalActions b StartTurn      = [PACallRa reason] ++ useGodM ++ drawTileM
      useGodM   = [PAEnterGodMode   | currentPlayerCanUseGod b]
      drawTileM = [PADrawTile | not (blockFull b)]
 
-legalActions _b (ShowScoring (Epoch 3))       = [PAQuit]
+legalActions _b (ShowScoring (Epoch 3))       = []
 legalActions _b (ShowScoring (Epoch _))       = [PABeginNewEpoch]
 
 legalActions b (UsingGod usedAtLeastOneGod) =
