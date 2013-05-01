@@ -306,10 +306,13 @@ storeOrWonTilesAtPositions gs = (ts, posns, countMs)
          count (t,_) = if c > 1 then Just c else Nothing 
            where c = length $ filter (==t) tilesInHandOrBeingWon
 
-     ts = zip possibles $ map (`elem` tilesInHandOrBeingWon ) possibles
-     tilesInHandOrBeingWon = sort $ case gameMode $ raBoard gs of
-            (ResolveDisasters (sts,_,_) _ (AuctionDRContext _ _)) -> sts -- not when godding
-            _                                                     -> tiles $ currentOrAuctionCurrentPlayer $ raBoard gs
+     ts                    = zip possibles $ map (`elem` tilesInHandOrBeingWon ) possibles
+     tilesInHandOrBeingWon = 
+        sort $ case gameMode $ raBoard gs of
+         -- although when godding we only pick DR from store, (not store+block), 
+         -- we still look at here rather than store, as this is updated during DR selection.
+          (ResolveDisasters (sts,_,_) _ _) -> sts
+          _                                -> tiles $ currentOrAuctionCurrentPlayer $ raBoard gs
      possibles = concat boardLayout
 
 drawRaTrack :: GS -> Picture
