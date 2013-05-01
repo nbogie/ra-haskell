@@ -371,7 +371,7 @@ scoreEpoch b = forAllPlayers (scoreEpochForPlayer isFinal pharCounts sunTotals) 
   where 
     pharCounts = map (length . filter (==Pharaoh) . tiles) $ M.elems $ players b
     sunTotals  = map (totalSunCount . suns) $ M.elems $ players b
-    isFinal = epoch b == Epoch 3
+    isFinal    = epoch b == Epoch 3
 
 -- Total values of all your suns, regardless of facing
 -- Used in final scoring, and perhaps by AI.  
@@ -429,7 +429,8 @@ sayPoints n = show n ++ " points"
 data ComparativeScoreReason = Min | Max | AllEqual | Neutral deriving (Show, Eq)
 
 scoreEpochForPlayer :: Bool -> [Int] -> [Int] -> Player -> Player
-scoreEpochForPlayer isFinal pharCounts sunTotals p = p { score = max 0 (score p + total) }
+scoreEpochForPlayer isFinal pharCounts sunTotals p = 
+  p { score = max 0 (score p + total) }
   where 
      total :: Int
      total = sum $ map scoreFrom $ trace (unlines $ map explainScore componentScores) componentScores
@@ -470,6 +471,7 @@ scoreMonuments ts = ScMonuments scoreForDifferents scoreForIdenticals
     scoreForIdenticals = sum $ map scoreIdenticalGroup $ filter ( (>=3) . length) $ group $ sort ts
     scoreIdenticalGroup g = [0,0,0,5,10,15] !! length g
 
+-- TODO: remove this.
 endEpoch :: Board -> (Bool, Board)
 endEpoch b = case epoch b of
   Epoch 3 -> (True, scoreEpoch $ b { block = [] })
