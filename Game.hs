@@ -335,13 +335,16 @@ active ::  Board -> Player
 active board = players board M.! currentPlayerId board
 
 
+currentOrAuctionCurrentPlayerNum :: Board -> PlayerNum
+currentOrAuctionCurrentPlayerNum board = 
+   case gameMode board of
+       (InAuction _reason (pi:_) _)                   -> pi
+       (ResolveDisasters _ _ (AuctionDRContext pi _)) -> pi
+       _                                              -> currentPlayerId board
+
 currentOrAuctionCurrentPlayer :: Board -> Player
-currentOrAuctionCurrentPlayer board = players board M.! ix
-  where 
-    ix = case gameMode board of
-          (InAuction _reason (pi:_) _)          -> pi
-          (ResolveDisasters _ _ (AuctionDRContext pi _)) -> pi
-          _                                     -> currentPlayerId board
+currentOrAuctionCurrentPlayer board = 
+  players board M.! currentOrAuctionCurrentPlayerNum board
 
 advancePlayer :: Board -> Board
 advancePlayer b = 

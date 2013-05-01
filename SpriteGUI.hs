@@ -353,7 +353,7 @@ drawState gs = Pictures
                [-- , "Deck: " ++ show $ deck $ raBoard gs
                 "Frame: " ++ show i
                 , show (epoch $ raBoard gs)
-                , show (currentOrAuctionCurrentPlayer $ raBoard gs)
+                , show (currentOrAuctionCurrentPlayerNum $ raBoard gs)
 
                 , "Cursors: " ++ show (cursors gs)
                ]
