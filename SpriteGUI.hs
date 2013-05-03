@@ -334,15 +334,10 @@ drawState gs = Pictures
    , translate (-400) (-30)  $ drawTextLines colorSeaGlass messages]
   where 
     i = frame gs
-    messages = [ titleForGameMode (gameMode $ raBoard gs)
-               ] ++ map show (handlersForLegalAcs gs) ++
-               [-- , "Deck: " ++ show $ deck $ raBoard gs
-                "Frame: " ++ show i
-                , show (epoch $ raBoard gs)
-                , show (currentOrAuctionCurrentPlayerNum $ raBoard gs)
-
-                , "Cursors: " ++ show (cursors gs)
-               ]
+    messages = [ titleForGameMode (gameMode $ raBoard gs) 
+               , show (epoch $ raBoard gs)
+               , show (currentOrAuctionCurrentPlayerNum $ raBoard gs)
+               ] ++ map show (handlersForLegalAcs gs)
 
 titleForGameMode ::  GameMode -> String
 titleForGameMode (InAuction{})            = "Auction!"
