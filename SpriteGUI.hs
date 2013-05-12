@@ -42,15 +42,15 @@ type GridArray = Array (Int, Int) Int
 guimain :: Board -> M.Map String MySprite -> IO ()
 guimain board sprs = 
   playIO
-          (InWindow "Ra - Sprite GUI" --name of the window
-            (900,800) -- initial size of the window
-            (0, 0) -- initial position of the window
+          (InWindow "Ra - Sprite GUI" -- name of the window
+            (900,800)                 -- initial size of the window
+            (0, 0)                    -- initial position of the window
           )
-          backgroundColor   -- background colour
-          30 -- number of simulation steps to take for each second of real time
-          (initGS board sprs) -- the initial world
-          (return . drawState) -- A function to convert the world into a picture
-          handleInput -- A function to handle input events
+          backgroundColor             -- background colour
+          30                          -- number of simulation steps to take for each second of real time
+          (initGS board sprs)         -- the initial world
+          (return . drawState)        -- A function to convert the world into a picture
+          handleInput                 -- A function to handle input events
           (\i w -> return $ updateGame i w)
 
 updateGame :: Float  -> GS -> GS
