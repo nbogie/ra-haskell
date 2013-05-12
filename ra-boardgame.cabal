@@ -46,15 +46,19 @@ executable ra-gui
   -- .hs or .lhs file containing the Main module.
   main-is:           GlossUI.hs
   
+  hs-source-dirs: src
+  
   -- Modules included in this executable, other than Main.
   -- other-modules:       
-  
+
   -- Other library packages from which modules are imported.
   build-depends:       base ==4.5.*, HUnit ==1.2.*, containers >= 0.4, random ==1.0.*, mtl ==2.1.*, gloss == 1.7.*, array == 0.4.*
 
 executable ra-text
   -- .hs or .lhs file containing the Main module.
   main-is:           TextUI.hs
+  
+  hs-source-dirs: src
   
   -- Modules included in this executable, other than Main.
   -- other-modules:       
