@@ -34,8 +34,8 @@ loopIO board = do
   if isGameOver board
     then do
     putStrLn "GAME OVER. Final score follows: "
-    putStrLn $ boardToString $ scoreEpoch board
-    else if not $ isStillInPlay $ handOf pi board
+    putStrLn $ boardToString $ fst $ scoreEpoch board
+    else if not $ isStillInPlay board pi
       then do
          playMsg pi "You are being skipped - you have no face-up suns."
          loopIO (advancePlayer board)
@@ -61,7 +61,7 @@ loopIO board = do
 
             ChoiceShowScores -> do
               putStrLn "Choice: Compute score as though at epoch end."
-              putStrLn $ boardToString $ scoreEpoch board
+              putStrLn $ boardToString $ fst $ scoreEpoch board
               loopIO board
 
             ChoiceAdvanceEpoch -> do
@@ -157,7 +157,7 @@ findBestBidIO :: Bool -> Board -> [PlayerNum] -> Maybe (Sun, PlayerNum)  -> IO (
 findBestBidIO _ _ [] topBid = return topBid
 findBestBidIO lastMustBid b (pi:pis) topBid = do
      let isLast = null pis 
-     if isStillInPlay (handOf pi b) && maybe True (((pi,b) `canBidHigherThan`) . fst) topBid
+     if isStillInPlay b pi && maybe True (((pi,b) `canBidHigherThan`) . fst) topBid
        then
          if isLast && isNothing topBid && lastMustBid
            then
@@ -252,14 +252,3 @@ pickOneFromMenuIO showFn pi items prompt = do
       itemIfValid n = fmap snd $ find ((==n) . fst) mapping
       mapping = zip [0..] items
 
-
-boardLayout :: [[StoreableTile]]
-boardLayout = [ topMons ++ topCivs ++ [Pharaoh] ++ [God] ++ [Flood]
-              , lowMons ++ lowCivs ++ [Gold] ++ [Nile]
-              ]
-  where 
-    (topMons, lowMons) = splitCounted 4 mons
-    (topCivs, lowCivs) = splitCounted 2 civs
-    mons = map Monument allMonumentTypes
-    civs = map Civilization allCivilizationTypes
-    splitCounted n xs = (take n xs, drop n xs)
