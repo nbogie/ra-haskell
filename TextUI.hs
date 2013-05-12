@@ -1,4 +1,4 @@
-module GUI where
+module Main where
 
 import Data.List(find,(\\),sort)
 import Data.Maybe(isJust,isNothing)

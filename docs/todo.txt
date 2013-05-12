@@ -1,6 +1,7 @@
+* output score in both versions
 * multiple ui's - e.g. curses, gloss - will highlight game/ui boundary
 * leverage the typed scoring by providing a scoring breakdown in the UI, and maybe a hint mode telling you what the current block is immediately worth to you.
-* improve types to enforce that certain tiles (Ra tiles) cannot be held in the auction block.
+* improve types to enforce that certain tiles (Ra tiles) cannot be held in the auction block. (already, certain cannot be held in the hand).
 
 DONE:
 * player having highest sun at the start of an epoch starts that epoch
