@@ -14,19 +14,21 @@ It supports some unofficial rules (for example, you can take a Disaster tile wit
 Limitations:
 ============
 
-No AI
-Messy, barely useable text interface
+Huge aesthetic issues in both text and graphical interfaces.
 
-There is an aesthetically unpleasant GUI version in the branch "glossgui".  While it's functionally almost complete, I'm not yet happy with the code.
+Neither AI nor network play!
+
+Scoring is computed but not shown.
 
 Usage:
 ======
 
+Invoking "cabal build" will create two executables: "ra-text" and "ra-gui".  Both take the same command-line arguments.
+
 To run the game with n players, invoke with -p n  E.g. A 3 player game can be started as follows:
 
-    runhaskell GUI.hs -p 3 
+    ra-gui -p 3 
 
-An event-heavy tileset, meant for development not balanced play, can be enabled with the -d switch, e.g. 
+An event-heavy tileset, meant for development only, can be enabled with the -d switch, e.g. 
 
-    runhaskell GUI.hs -p 4 -d
-
+    ra-gui -p 4 -d
