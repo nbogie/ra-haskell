@@ -11,3 +11,5 @@ cabal-dev
 *.chi
 *.chs.h
 .virthualenv
+docs/state_diagram.graffle
+docs/exported_methods.txt
